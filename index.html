@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orivexa | E-Commerce</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+</head>
+<body class="bg-[#FAF7F5] text-[#4A4A4A] font-sans antialiased">
+
+    <nav class="bg-white shadow-sm sticky top-0 z-40">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+            <a href="#" class="text-2xl font-bold tracking-wider text-[#D4A373]">ORIVEXA</a>
+            <div>
+                <button id="adminBtn" class="text-xs uppercase tracking-widest text-gray-400 hover:text-[#D4A373] transition">
+                    <i class="fa-solid fa-user-gear mr-1"></i> ผู้ดูแล
+                </button>
+                <button id="logoutBtn" class="hidden text-xs uppercase tracking-widest text-red-400 hover:text-red-600 transition">
+                    ออกจากระบบ <i class="fa-solid fa-right-from-bracket ml-1"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div id="loginModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <h3 class="text-lg font-bold mb-4 text-center text-[#4A4A4A]">เข้าสู่ระบบผู้ดูแล</h3>
+            <div class="space-y-3">
+                <input type="text" id="usernameInput" placeholder="Username" class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-1 focus:ring-[#D4A373]">
+                <input type="password" id="passwordInput" placeholder="Password" class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-1 focus:ring-[#D4A373]">
+                <p id="loginError" class="text-red-500 text-xs hidden">รหัสผ่านไม่ถูกต้อง</p>
+                <div class="flex space-x-2 pt-2">
+                    <button id="closeLoginBtn" class="w-1/2 py-2 bg-gray-100 rounded-xl text-sm">ยกเลิก</button>
+                    <button id="submitLoginBtn" class="w-1/2 py-2 bg-[#D4A373] text-white rounded-xl text-sm shadow-sm hover:bg-[#C39262]">Login</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <header id="heroSection" class="relative bg-[#EAE2B7] h-[260px] md:h-[400px] flex items-center justify-center bg-cover bg-center transition-all" style="background-image: url('https://images.unsplash.com/photo-1596462502278-27bfdc403348?q=80&w=1200');">
+        <div class="absolute inset-0 bg-black/20"></div>
+        <div class="relative text-center text-white px-4">
+            <h1 id="heroTitle" class="text-3xl md:text-5xl font-bold mb-2 drop-shadow-md">Welcome to Orivexa</h1>
+            <p id="heroSubtitle" class="text-sm md:text-lg opacity-90 drop-shadow-sm">เครื่องสำอางและแฟชั่นสำหรับผู้หญิงยุคใหม่</p>
+        </div>
+    </header>
+
+    <div class="max-w-xl mx-auto px-4 -mt-6 relative z-10">
+        <div class="bg-white rounded-full shadow-md p-2 flex items-center border border-[#E8E1DB]">
+            <i class="fa-solid fa-magnifying-glass text-gray-400 ml-3 mr-2"></i>
+            <input type="text" id="searchInput" placeholder="ค้นหาเครื่องสำอาง, เสื้อผ้า สินค้าที่คุณสนใจ..." class="w-full focus:outline-none bg-transparent text-sm">
+        </div>
+    </div>
+
+    <main class="max-w-6xl mx-auto px-4 py-8 flex flex-col md:flex-row gap-6">
+        <aside class="w-full md:w-1/4">
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-[#F0EAE5]">
+                <h2 class="font-bold text-lg mb-3 text-[#4A4A4A] hidden md:block"><i class="fa-solid fa-bars-staggered mr-2 text-[#D4A373]"></i>หมวดหมู่สินค้า</h2>
+                <div id="categoryMenu" class="flex md:flex-col overflow-x-auto md:overflow-x-visible space-x-2 md:space-x-0 md:space-y-1 pb-2 md:pb-0 scrollbar-none">
+                </div>
+            </div>
+        </aside>
+
+        <section class="w-full md:w-3/4">
+            <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 pb-3">
+                <div>
+                    <h2 id="currentCategoryTitle" class="text-xl font-bold text-[#4A4A4A]">สินค้าทั้งหมด</h2>
+                    <span id="productCount" class="text-xs text-gray-400">0 รายการ</span>
+                </div>
+                
+                <div class="flex items-center space-x-2 self-end sm:self-auto flex-wrap justify-end gap-y-2">
+                    <button id="saveOrderBtn" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-3 py-2 rounded-xl transition shadow-sm items-center gap-1">
+                        <i class="fa-solid fa-floppy-disk"></i> บันทึกตำแหน่งสินค้า
+                    </button>
+
+                    <div class="flex items-center space-x-2">
+                        <label for="productSortSelect" class="text-xs text-gray-500 font-medium whitespace-nowrap"><i class="fa-solid fa-arrow-down-up-nodes mr-1 text-gray-400"></i> จัดเรียงตาม:</label>
+                        <select id="productSortSelect" class="p-2 border border-gray-200 text-xs rounded-xl bg-white focus:border-[#D4A373] focus:outline-none transition cursor-pointer shadow-sm">
+                            <option value="default">👑 แนะนำ / จัดเรียงเอง</option>
+                            <option value="price-asc">🔼 ราคาน้อย ➔ มาก</option>
+                            <option value="price-desc">🔽 ราคามาก ➔ น้อย</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div id="productGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4">
+            </div>
+        </section>
+    </main>
+
+    <section id="adminPanel" class="hidden border-t-2 border-dashed border-[#D4A373] bg-white mt-12 py-10 px-4">
+        <div class="max-w-5xl mx-auto">
+            <div class="flex items-center justify-between mb-8 pb-4 border-b">
+                <h2 class="text-2xl font-bold text-[#4A4A4A]"><i class="fa-solid fa-circle-user text-[#D4A373] mr-2"></i>ระบบจัดการผู้ดูแลหลังบ้าน (Admin)</h2>
+                <span class="bg-[#FAF7F5] text-[#D4A373] px-3 py-1 rounded-full text-xs font-bold border border-[#EAE2B7]">Admin Mode Active</span>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="bg-[#FAF7F5] p-5 rounded-2xl border border-[#E8E1DB]">
+                    <h3 class="font-bold text-md text-[#D4A373] mb-4"><i class="fa-solid fa-image mr-2"></i>1. แก้ไขหน้าปกเว็บไซต์</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">URL รูปภาพหน้าปก</label>
+                            <input type="text" id="editHeroUrl" class="w-full p-2 border text-xs rounded-xl focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">ข้อความหลัก (Title)</label>
+                            <input type="text" id="editHeroTitle" class="w-full p-2 border text-xs rounded-xl focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">ข้อความย่อย (Subtitle)</label>
+                            <input type="text" id="editHeroSub" class="w-full p-2 border text-xs rounded-xl focus:outline-none">
+                        </div>
+                        <button id="saveHeroBtn" class="w-full py-2 bg-[#D4A373] text-white text-xs rounded-xl font-bold shadow-sm hover:bg-[#C39262] transition">อัปเดตหน้าปก</button>
+                    </div>
+                </div>
+
+                <div class="bg-[#FAF7F5] p-5 rounded-2xl border border-[#E8E1DB]">
+                    <h3 class="font-bold text-md text-[#D4A373] mb-4"><i class="fa-solid fa-tags mr-2"></i>2. จัดการหมวดหมู่ (หลัก/ย่อย)</h3>
+                    <div class="bg-white p-3 rounded-xl border mb-4 space-y-2">
+                        <p class="text-xs font-bold text-gray-500">เพิ่มหมวดหมู่ใหม่</p>
+                        <select id="catTypeSelect" class="w-full p-1.5 border text-xs rounded-lg"></select>
+                        <input type="text" id="newCatName" placeholder="ชื่อหมวดหมู่" class="w-full p-1.5 border text-xs rounded-lg focus:outline-none">
+                        <button id="addCatBtn" class="w-full py-1.5 bg-neutral-700 text-white text-xs rounded-lg font-bold hover:bg-black transition">เพิ่มหมวดหมู่</button>
+                    </div>
+                    <div class="space-y-2 max-h-[220px] overflow-y-auto pr-1" id="adminCategoryList"></div>
+                </div>
+
+                <div id="productFormContainer" class="bg-[#FAF7F5] p-5 rounded-2xl border border-[#E8E1DB]">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 id="formModeTitle" class="font-bold text-md text-[#D4A373]"><i class="fa-solid fa-box-open mr-2"></i>3. เพิ่มสินค้าใหม่</h3>
+                        <button id="cancelEditBtn" class="hidden bg-gray-200 text-gray-600 px-2 py-1 rounded-lg text-xs hover:bg-gray-300">ยกเลิกแก้ไข</button>
+                    </div>
+                    <div class="space-y-2.5 text-xs">
+                        <div>
+                            <label class="block text-gray-500 mb-0.5">เลือกหมวดหมู่ย่อยสำหรับสินค้า</label>
+                            <select id="prodSubCatSelect" class="w-full p-2 border rounded-xl bg-white"></select>
+                        </div>
+                        <div>
+                            <label class="block text-gray-500 mb-0.5">ชื่อสินค้า</label>
+                            <input type="text" id="prodName" class="w-full p-2 border rounded-xl focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-gray-500 mb-0.5">URL รูปภาพสินค้า</label>
+                            <input type="text" id="prodImgUrl" class="w-full p-2 border rounded-xl focus:outline-none" placeholder="https://...">
+                        </div>
+                        <div>
+                            <label class="block text-amber-700 font-bold mb-0.5"><i class="fa-solid fa-key mr-1"></i>คีย์เวิร์ดสำหรับค้นหา (ใส่เครื่องหมายจุลภาค , คั่น)</label>
+                            <input type="text" id="prodKeywords" class="w-full p-2 border border-amber-200 bg-amber-50/50 rounded-xl focus:outline-none focus:border-amber-400 placeholder-gray-400" placeholder="เกลี่ยง่าย, บลัชออน">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-gray-500 mb-0.5">ราคาปกติ (บาท)</label>
+                                <input type="number" id="prodPrice" class="w-full p-2 border rounded-xl focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-gray-500 mb-0.5">ส่วนลด เช่น 25%=2500</label>
+                                <input type="text" id="prodDiscount" class="w-full p-2 border rounded-xl focus:outline-none" placeholder="25%=2500">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-gray-500 mb-0.5">ลิงก์ Shopee 1</label>
+                            <input type="text" id="prodShopee1" class="w-full p-2 border rounded-xl focus:outline-none" placeholder="https://shopee.co.th/...">
+                        </div>
+                        <div>
+                            <label class="block text-gray-500 mb-0.5">ลิงก์ Shopee 2</label>
+                            <input type="text" id="prodShopee2" class="w-full p-2 border rounded-xl focus:outline-none" placeholder="https://shopee.co.th/...">
+                        </div>
+                        <button id="saveProductBtn" class="w-full py-2.5 bg-[#D4A373] text-white font-bold rounded-xl shadow-sm hover:bg-[#C39262] transition mt-2 text-sm">บันทึกสินค้า</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="bg-white border-t mt-20 py-6 text-center text-xs text-gray-400">
+        <p>&copy; 2026 Orivexa Minimal E-Commerce. All rights reserved.</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

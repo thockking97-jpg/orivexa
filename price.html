@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chic & Glow | ระบบจัดการราคาและส่วนลด</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* ป้องกันกล่องข้อความขยายเกินขนาดพื้นที่บนมือถือ */
+        input[type="number"], input[type="text"] {
+            min-width: 0 !important;
+        }
+
+        /* เปิดระบบเลื่อนตารางแนวนอนแบบไหลลื่นบนอุปกรณ์สัมผัส */
+        .overflow-x-auto {
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* LOGIC CSS: ตรึงคอลัมน์ Checkbox และ รูปสินค้าไว้ฝั่งซ้ายสุดเมื่อปัดจอบนมือนิถือ */
+        @media (max-width: 768px) {
+            /* ตรึงคอลัมน์ที่ 1: Checkbox */
+            table th:nth-child(1), 
+            table td:nth-child(1) {
+                position: sticky;
+                left: 0;
+                background-color: #ffffff;
+                z-index: 10;
+                box-shadow: 2px 0 5px rgba(0,0,0,0.04);
+            }
+            
+            /* ตรึงคอลัมน์ที่ 2: รูปภาพสินค้า */
+            table th:nth-child(2), 
+            table td:nth-child(2) {
+                position: sticky;
+                left: 48px; /* ขยับตำแหน่งมาต่อท้ายกล่อง Checkbox */
+                background-color: #ffffff;
+                z-index: 10;
+                box-shadow: 2px 0 5px rgba(0,0,0,0.04);
+            }
+
+            /* ควบคุมสีพื้นหลังของแถวที่ถูกเลือก (Checked) ไม่ให้สีคอลัมน์ที่ตรึงไว้เพี้ยน */
+            tr.bg-amber-50\/40 td:nth-child(1),
+            tr.bg-amber-50\/40 td:nth-child(2) {
+                background-color: #fdfaf4 !important;
+            }
+            
+            /* ขยายขนาดกล่องกรอกข้อมูลบนมือถือเล็กน้อยเพื่อให้จิ้มพิมพ์ง่ายขึ้น */
+            .inline-price-input, .inline-discount-input {
+                padding: 6px 4px !important;
+                font-size: 13px !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-[#FAF7F5] text-[#4A4A4A] font-sans antialiased pb-12">
+
+    <nav class="bg-white shadow-sm sticky top-0 z-40 mb-6">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <a href="index.html" class="text-xl font-bold tracking-wider text-[#D4A373]">CHIC & GLOW</a>
+                <span class="text-gray-300">|</span>
+                <span class="text-sm font-medium text-gray-500">
+                    <i class="fa-solid fa-tags mr-1"></i> ระบบจัดการราคาและส่วนลด (Bulk Editor)
+                </span>
+            </div>
+            <a href="index.html" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2 rounded-xl transition">
+                <i class="fa-solid fa-arrow-left mr-1"></i> กลับหน้าร้านค้า
+            </a>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            
+            <aside class="space-y-6 lg:col-span-1">
+                
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-[#F0EAE5]">
+                    <h3 class="font-bold text-sm mb-4 text-[#4A4A4A]">
+                        <i class="fa-solid fa-filter mr-2 text-[#D4A373]"></i> ค้นหา & คัดกรอง
+                    </h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">ค้นหาชื่อสินค้า</label>
+                            <div class="bg-gray-50 rounded-xl p-2 flex items-center border">
+                                <i class="fa-solid fa-magnifying-glass text-gray-400 mr-2 text-xs"></i>
+                                <input type="text" id="bulkSearchInput" placeholder="พิมพ์ชื่อสินค้า..." class="w-full bg-transparent text-xs focus:outline-none">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">หมวดหมู่ย่อย</label>
+                            <select id="bulkCategorySelect" class="w-full p-2 border text-xs rounded-xl bg-white focus:outline-none">
+                                <option value="all">แสดงทุกหมวดหมู่</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">คัดกรองด้วยรูปแบบโค้ดส่วนลดเดิม</label>
+                            <select id="bulkDiscountFilterSelect" class="w-full p-2 border text-xs rounded-xl bg-white focus:outline-none">
+                                <option value="all">แสดงโค้ดส่วนลดทั้งหมด</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-[#F0EAE5]">
+                    <h3 class="font-bold text-sm mb-1 text-[#4A4A4A]">
+                        <i class="fa-solid fa-bolt mr-2 text-amber-500"></i> แก้ไขข้อมูลแบบกลุ่ม
+                    </h3>
+                    <p class="text-[11px] text-gray-400 mb-4">ระบบจะเปลี่ยนค่าเฉพาะสินค้าที่คุณติ๊กเลือกไว้เท่านั้น</p>
+                    
+                    <div class="space-y-4">
+                        <div class="p-3 bg-amber-50/50 rounded-xl border border-amber-100 space-y-2">
+                            <label class="flex items-center text-xs font-semibold text-gray-700">
+                                <input type="checkbox" id="enableUpdatePrice" class="mr-2 rounded border-gray-300"> แก้ไขราคาปกติ
+                            </label>
+                            <input type="number" id="batchPriceInput" placeholder="ใส่ราคาปกติใหม่ (บาท)" disabled class="w-full p-2 border text-xs rounded-xl bg-gray-50 focus:outline-none">
+                        </div>
+
+                        <div class="p-3 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2">
+                            <label class="flex items-center text-xs font-semibold text-gray-700">
+                                <input type="checkbox" id="enableUpdateDiscount" class="mr-2 rounded border-gray-300"> แก้ไขโค้ดส่วนลด
+                            </label>
+                            <input type="text" id="batchDiscountInput" placeholder="เช่น 25%=2500" disabled class="w-full p-2 border text-xs rounded-xl bg-gray-50 focus:outline-none">
+                        </div>
+
+                        <button id="applyBulkEditBtn" class="w-full py-3 bg-[#D4A373] text-white text-xs font-bold rounded-xl shadow-sm hover:bg-[#C39262] transition flex items-center justify-center space-x-1">
+                            <i class="fa-solid fa-floppy-disk"></i> <span>บันทึกการเปลี่ยนค่าที่เลือก</span>
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="lg:col-span-3">
+                <div class="bg-white rounded-2xl shadow-sm border border-[#F0EAE5] overflow-hidden">
+                    
+                    <div class="p-4 bg-gray-50 border-b flex flex-wrap gap-2 justify-between items-center">
+                        <div class="flex items-center space-x-2">
+                            <span class="font-bold text-sm text-[#4A4A4A]">รายการสินค้าในระบบ</span>
+                            <span id="selectedCountBadge" class="bg-neutral-200 text-neutral-700 text-[10px] font-bold px-2 py-0.5 rounded-full">เลือกอยู่ 0 รายการ</span>
+                        </div>
+                        
+                        <div class="flex items-center space-x-2">
+                            <button id="triggerSortBtn" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-sm transition">
+                                <i class="fa-solid fa-arrow-up-wide-short mr-1"></i> เรียงเอาที่เลือกขึ้นบน
+                            </button>
+                            <span id="bulkProductCount" class="text-xs text-gray-400">ทั้งหมด 0 รายการ</span>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse min-w-[700px]">
+                            <thead>
+                                <tr class="border-b bg-gray-50/70 text-[11px] font-bold uppercase text-gray-500 tracking-wider">
+                                    <th class="py-3 px-4 w-12 text-center">
+                                        <input type="checkbox" id="selectAllCheckbox" class="rounded border-gray-300">
+                                    </th>
+                                    <th class="py-3 px-2 w-14 text-center">รูป</th>
+                                    <th class="py-3 px-3">รายละเอียดสินค้า</th>
+                                    <th class="py-3 px-3 w-40">ราคาปกติ (บาท)</th>
+                                    <th class="py-3 px-3 w-48">โค้ดส่วนลดปัจจุบัน</th>
+                                    <th class="py-3 px-3 w-20 text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bulkProductTableBody" class="text-xs divide-y">
+                                </tbody>
+                        </table>
+                    </div>
+
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <script src="price.js"></script>
+</body>
+</html>
