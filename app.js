@@ -1,5 +1,5 @@
 // ==========================================================================
-// [FIREBASE INITIALIZATION] การตั้งค่าและเชื่อมต่อ Firebase & Firebase Auth
+// [FIREBASE INITIALIZATION] การตั้งค่าและเชื่อมต่อ Firebase, Auth & Firestore
 // ==========================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyAdXhdFIURRCZX_6ozynr0Ij16KoRAFkts",
@@ -14,9 +14,10 @@ const firebaseConfig = {
 // สั่งเปิดตัวเชื่อมต่อ Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
+const db = firebase.firestore();
 
 // ==========================================================================
-// [SECTION 1: DATA SETUP & STORAGE SYNC] การดึงและซิงค์ฐานข้อมูลหลักผ่าน LocalStorage
+// [SECTION 1: DATA SETUP & STORAGE SYNC] การดึงและซิงค์ฐานข้อมูลหลักผ่าน Firebase Firestore
 // ==========================================================================
 let siteBanner = {
     url: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?q=80&w=1200",
@@ -27,34 +28,55 @@ let siteBanner = {
 let categories = [];
 let products = [];
 
+// ฟังก์ชันโหลดข้อมูลหลักจาก Cloud Firestore แบบเรียลไทม์
 function loadAllData() {
-    const localProds = localStorage.getItem('orivexa_products');
-    const localCats = localStorage.getItem('orivexa_categories');
+    // 1. ดึงและติดตามข้อมูลแบนเนอร์ร้านค้า
+    db.collection("settings").doc("banner").onSnapshot((doc) => {
+        if (doc.exists) {
+            siteBanner = doc.data();
+        } else {
+            // หากไม่มีข้อมูลในระบบ ให้บันทึกค่าตั้งต้นลงไป
+            db.collection("settings").doc("banner").set(siteBanner);
+        }
+        renderBanner();
+    });
 
-    if (localProds) {
-        products = JSON.parse(localProds);
-    } else {
-        products = [
-            { id: "p-1", name: "ลิปสติกเนื้อแมตต์ ชุ่มชื้นยาวนาน โทนส้มอิฐ เกาหลีสุดๆ", img: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?q=80&w=500", price: 350, discountCode: "25%=2000", shopee1: "https://shopee.co.th", shopee2: "", subCategory: "ลิปสติก", keywords: "lip, กันน้ำ, ติดทน" },
-            { id: "p-2", name: "เสื้อเบลเซอร์สไตล์มินิมอล ทรงหลวม แฟชั่นสาวออฟฟิศ ลุคคุณหนู", img: "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?q=80&w=500", price: 1200, discountCode: "10%=500", shopee1: "https://shopee.co.th", shopee2: "https://shopee.co.th", subCategory: "เสื้อ", keywords: "blazer, สูท, กันหนาว" }
-        ];
-        saveAllData();
-    }
+    // 2. ดึงและติดตามข้อมูลหมวดหมู่สินค้า (เรียงตามลำดับดัชนีตำแหน่ง)
+    db.collection("categories").orderBy("orderIndex", "asc").onSnapshot((snapshot) => {
+        if (!snapshot.empty) {
+            categories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } else {
+            // โครงสร้างหมวดหมู่สินค้าเริ่มต้น หากในระบบ Firestore ยังว่างเปล่า
+            const defaultCats = [
+                { name: "เครื่องสำอาง", type: "main", sub: ["แป้ง", "ลิปสติก"], orderIndex: 0 },
+                { name: "แฟชั่น", type: "main", sub: ["เสื้อ", "กางเกง"], orderIndex: 1 }
+            ];
+            defaultCats.forEach((cat, index) => {
+                db.collection("categories").doc('cat-' + (Date.now() + index)).set(cat);
+            });
+            categories = defaultCats;
+        }
+        renderCategories();
+        renderProducts(); // สั่งเรนเดอร์สินค้าใหม่เพื่อให้ตัวเลือกหมวดหมู่ย่อยในฟอร์มทำงานถูกต้อง
+    });
 
-    if (localCats) {
-        categories = JSON.parse(localCats);
-    } else {
-        categories = [
-            { id: "cat-1", name: "เครื่องสำอาง", type: "main", sub: ["แป้ง", "ลิปสติก"] },
-            { id: "cat-2", name: "แฟชั่น", type: "main", sub: ["เสื้อ", "กางเกง"] }
-        ];
-        saveAllData();
-    }
-}
-
-function saveAllData() {
-    localStorage.setItem('orivexa_products', JSON.stringify(products));
-    localStorage.setItem('orivexa_categories', JSON.stringify(categories));
+    // 3. ดึงและติดตามข้อมูลรายการสินค้าทั้งหมด (เรียงลำดับตามตำแหน่งที่จัดไว้)
+    db.collection("products").orderBy("orderIndex", "asc").onSnapshot((snapshot) => {
+        if (!snapshot.empty) {
+            products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } else {
+            // รายการสินค้าตั้งต้น สำหรับเริ่มเปิดร้านค้าบนระบบ Cloud ครั้งแรก
+            const defaultProds = [
+                { name: "ลิปสติกเนื้อแมตต์ ชุ่มชื้นยาวนาน โทนส้มอิฐ เกาหลีสุดๆ", img: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?q=80&w=500", price: 350, discountCode: "25%=2000", shopee1: "https://shopee.co.th", shopee2: "", subCategory: "ลิปสติก", keywords: "lip, กันน้ำ, ติดทน", orderIndex: 0 },
+                { name: "เสื้อเบลเซอร์สไตล์มินิมอล ทรงหลวม แฟชั่นสาวออฟฟิศ ลุคคุณหนู", img: "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?q=80&w=500", price: 1200, discountCode: "10%=500", shopee1: "https://shopee.co.th", shopee2: "https://shopee.co.th", subCategory: "เสื้อ", keywords: "blazer, สูท, กันหนาว", orderIndex: 1 }
+            ];
+            defaultProds.forEach((prod, index) => {
+                db.collection("products").doc('p-' + (Date.now() + index)).set(prod);
+            });
+            products = defaultProds;
+        }
+        renderProducts();
+    });
 }
 
 // ==========================================================================
@@ -65,7 +87,7 @@ let currentFilter = "all";
 let searchKeyword = "";          
 let editingProductId = null;     
 let currentSortRule = "default"; 
-let gridSortableInstance = null; // ถือข้อมูล Instance ลากจัดเรียงของ Grid หน้าร้าน
+let gridSortableInstance = null; 
 
 // ==========================================================================
 // [SECTION 3: DOM ELEMENTS & APP INIT] ตัวจับปุ่ม/ฟอร์ม และสั่งให้ระบบเริ่มทำงาน
@@ -83,15 +105,12 @@ const saveOrderBtn = document.getElementById('saveOrderBtn');
 
 document.addEventListener("DOMContentLoaded", () => {
     loadAllData();       
-    renderBanner();      
-    renderCategories();  
     setupSortDropdown(); 
-    renderProducts();    
     setupAdminForms();   
     setupLoginEnterKey(); 
-    setupProductGridOrderSave(); // ผูกกลไกจับเหตุการณ์บันทึกจัดเรียงด่วน
+    setupProductGridOrderSave(); 
     
-    // ติดตามสถานะล็อกอินจาก Firebase ตลอดเวลา (กรณีเปิดแผ่นหน้าจอใหม่มาจะได้ไม่ต้องล็อกอินซ้ำ)
+    // ติดตามสถานะการเข้าสู่ระบบผู้ดูแลหลังบ้านจาก Firebase
     auth.onAuthStateChanged((user) => {
         if (user) {
             handleAdminLoginSuccess();
@@ -140,12 +159,13 @@ function setupSortDropdown() {
 
 function renderProducts() {
     const grid = document.getElementById('productGrid');
+    if (!grid) return;
     grid.innerHTML = "";
 
     let filtered = products.filter(p => {
         const matchesCategory = (currentFilter === "all" || p.subCategory === currentFilter);
         const cleanQuery = searchKeyword.toLowerCase().trim();
-        const matchesName = p.name.toLowerCase().includes(cleanQuery);
+        const matchesName = p.name ? p.name.toLowerCase().includes(cleanQuery) : false;
         const productKeywordsStr = p.keywords ? p.keywords.toLowerCase() : "";
         const matchesKeywords = productKeywordsStr.includes(cleanQuery);
         return matchesCategory && (matchesName || matchesKeywords);
@@ -163,6 +183,9 @@ function renderProducts() {
             const priceB = calculateDiscountPrice(b.price, b.discountCode).finalPrice;
             return priceB - priceA;
         });
+    } else if (currentSortRule === "default") {
+        // เรียงลำดับจากดัชนีของข้อมูล (orderIndex)
+        filtered.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
     }
 
     document.getElementById('productCount').innerText = `${filtered.length} รายการ`;
@@ -177,12 +200,12 @@ function renderProducts() {
         const discInfo = calculateDiscountPrice(p.price, p.discountCode);
         let shopeeButtonsHTML = "";
         if (p.shopee1 && !p.shopee2) {
-            shopeeButtonsHTML = `<a href="${p.shopee1}" target="_blank" class="w-full btn-shopee text-center py-1.5 rounded-lg font-bold text-xs block transition"><i class="fa-solid fa-bag-shopping mr-1"></i> Shopee</a>`;
+            shopeeButtonsHTML = `<a href="${p.shopee1}" target="_blank" class="w-full text-center bg-[#EE4D2D] text-white hover:bg-[#D43F21] py-1.5 rounded-lg font-bold text-xs block transition"><i class="fa-solid fa-bag-shopping mr-1"></i> Shopee</a>`;
         } else if (p.shopee1 && p.shopee2) {
             shopeeButtonsHTML = `
                 <div class="grid grid-cols-2 gap-1 w-full">
-                    <a href="${p.shopee1}" target="_blank" class="btn-shopee text-center py-1.5 rounded-lg font-bold text-[11px] block transition text-ellipsis overflow-hidden whitespace-nowrap">Shopee 1</a>
-                    <a href="${p.shopee2}" target="_blank" class="btn-shopee text-center py-1.5 rounded-lg font-bold text-[11px] block transition text-ellipsis overflow-hidden whitespace-nowrap">Shopee 2</a>
+                    <a href="${p.shopee1}" target="_blank" class="text-center bg-[#EE4D2D] text-white hover:bg-[#D43F21] py-1.5 rounded-lg font-bold text-[11px] block transition text-ellipsis overflow-hidden whitespace-nowrap">Shopee 1</a>
+                    <a href="${p.shopee2}" target="_blank" class="text-center bg-[#EE4D2D] text-white hover:bg-[#D43F21] py-1.5 rounded-lg font-bold text-[11px] block transition text-ellipsis overflow-hidden whitespace-nowrap">Shopee 2</a>
                 </div>
             `;
         }
@@ -278,31 +301,33 @@ function renderCategories() {
         `;
         adminCatList.appendChild(adminMainRow);
 
-        mainCat.sub.forEach((subCat, subIdx) => {
-            const subBtn = document.createElement('button');
-            subBtn.className = `px-3 py-1.5 md:py-2 md:pl-5 text-xs rounded-xl whitespace-nowrap text-left transition ${currentFilter === subCat ? 'bg-[#EAE2B7] text-[#4A4A4A] font-bold shadow-sm' : 'bg-[#FAF7F5] text-gray-600 hover:bg-gray-100'}`;
-            subBtn.innerText = `${subCat}`;
-            subBtn.onclick = () => { currentFilter = subCat; updateActiveCategoryUI(subBtn); renderProducts(); };
-            menuContainer.appendChild(subBtn);
+        if (mainCat.sub && Array.isArray(mainCat.sub)) {
+            mainCat.sub.forEach((subCat, subIdx) => {
+                const subBtn = document.createElement('button');
+                subBtn.className = `px-3 py-1.5 md:py-2 md:pl-5 text-xs rounded-xl whitespace-nowrap text-left transition ${currentFilter === subCat ? 'bg-[#EAE2B7] text-[#4A4A4A] font-bold shadow-sm' : 'bg-[#FAF7F5] text-gray-600 hover:bg-gray-100'}`;
+                subBtn.innerText = `${subCat}`;
+                subBtn.onclick = () => { currentFilter = subCat; updateActiveCategoryUI(subBtn); renderProducts(); };
+                menuContainer.appendChild(subBtn);
 
-            const prodSubOpt = document.createElement('option');
-            prodSubOpt.value = subCat;
-            prodSubOpt.innerText = `${mainCat.name} ➔ ${subCat}`;
-            prodSubCatSelect.appendChild(prodSubOpt);
+                const prodSubOpt = document.createElement('option');
+                prodSubOpt.value = subCat;
+                prodSubOpt.innerText = `${mainCat.name} ➔ ${subCat}`;
+                prodSubCatSelect.appendChild(prodSubOpt);
 
-            const adminSubRow = document.createElement('div');
-            adminSubRow.className = "bg-neutral-50 p-1.5 pl-6 rounded-lg border border-dashed flex items-center justify-between text-xs";
-            adminSubRow.innerHTML = `
-                <div class="text-gray-600">▪ ${subCat}</div>
-                <div class="flex items-center space-x-1.5">
-                    <button onclick="moveSubCategory(${mainIdx}, ${subIdx}, 'up')" class="text-gray-400 hover:text-black"><i class="fa-solid fa-arrow-up"></i></button>
-                    <button onclick="moveSubCategory(${mainIdx}, ${subIdx}, 'down')" class="text-gray-400 hover:text-black"><i class="fa-solid fa-arrow-down"></i></button>
-                    <button onclick="editCategoryName('${mainCat.id}', 'sub', ${subIdx})" class="text-blue-500 hover:text-blue-700 mx-0.5"><i class="fa-solid fa-pen"></i></button>
-                    <button onclick="deleteCategory('${mainCat.id}', 'sub', ${subIdx})" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash-can"></i></button>
-                </div>
-            `;
-            adminCatList.appendChild(adminSubRow);
-        });
+                const adminSubRow = document.createElement('div');
+                adminSubRow.className = "bg-neutral-50 p-1.5 pl-6 rounded-lg border border-dashed flex items-center justify-between text-xs";
+                adminSubRow.innerHTML = `
+                    <div class="text-gray-600">▪ ${subCat}</div>
+                    <div class="flex items-center space-x-1.5">
+                        <button onclick="moveSubCategory(${mainIdx}, ${subIdx}, 'up')" class="text-gray-400 hover:text-black"><i class="fa-solid fa-arrow-up"></i></button>
+                        <button onclick="moveSubCategory(${mainIdx}, ${subIdx}, 'down')" class="text-gray-400 hover:text-black"><i class="fa-solid fa-arrow-down"></i></button>
+                        <button onclick="editCategoryName('${mainCat.id}', 'sub', ${subIdx})" class="text-blue-500 hover:text-blue-700 mx-0.5"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="deleteCategory('${mainCat.id}', 'sub', ${subIdx})" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+                `;
+                adminCatList.appendChild(adminSubRow);
+            });
+        }
     });
 }
 
@@ -316,12 +341,11 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
 });
 
 // ==========================================================================
-// [SECTION 5: ADMIN AUTHENTICATION]
+// [SECTION 5: ADMIN AUTHENTICATION] การเข้าสู่ระบบผู้ดูแลหลังบ้าน
 // ==========================================================================
 adminBtn.addEventListener('click', () => { loginModal.classList.remove('hidden'); usernameInput.focus(); });
 closeLoginBtn.addEventListener('click', () => { loginModal.classList.add('hidden'); loginError.classList.add('hidden'); });
 
-// ฟังก์ชันสำหรับเรียกใช้งานเพื่อตรวจสอบสิทธิ์ล็อกอินผ่าน Firebase Auth แทนแบบเดิม
 function executeLogin() {
     const email = usernameInput.value.trim();
     const password = passwordInput.value;
@@ -332,15 +356,12 @@ function executeLogin() {
         return;
     }
 
-    // เรียกฟังก์ชันของ Firebase ยืนยันตัวตนด้วย Email และ Password
     auth.signInWithEmailAndPassword(email, password)
         .then(() => {
-            // ล็อกอินสำเร็จ (กลไกหน้าจอจะเปลี่ยนผ่าน onAuthStateChanged ด้านบนอัตโนมัติ)
             loginModal.classList.add('hidden');
             loginError.classList.add('hidden');
         })
         .catch((error) => {
-            // เกิดข้อผิดพลาด/รหัสไม่ถูก
             console.error(error);
             loginError.innerText = "อีเมลหรือรหัสผ่านระบบหลังบ้านไม่ถูกต้อง";
             loginError.classList.remove('hidden');
@@ -349,7 +370,6 @@ function executeLogin() {
 
 submitLoginBtn.addEventListener('click', executeLogin);
 
-// ตัวจัดแจงเมื่อ Firebase ตรวจพบว่าล็อกอินผ่านสำเร็จ
 function handleAdminLoginSuccess() {
     isAdminLoggedIn = true;
     adminPanel.classList.remove('hidden'); 
@@ -358,9 +378,9 @@ function handleAdminLoginSuccess() {
     
     saveOrderBtn.style.display = 'flex';
 
-    document.getElementById('editHeroUrl').value = siteBanner.url;
-    document.getElementById('editHeroTitle').value = siteBanner.title;
-    document.getElementById('editHeroSub').value = siteBanner.subtitle;
+    document.getElementById('editHeroUrl').value = siteBanner.url || "";
+    document.getElementById('editHeroTitle').value = siteBanner.title || "";
+    document.getElementById('editHeroSub').value = siteBanner.subtitle || "";
 
     injectAdminShortcutMenu();
     renderProducts(); 
@@ -394,15 +414,12 @@ function injectAdminShortcutMenu() {
     adminPanel.insertBefore(shortcutDiv, adminPanel.firstChild);
 }
 
-// เมื่อกดออกจากระบบ ให้ไปล้างสิทธิ์บนระบบ Firebase
 logoutBtn.addEventListener('click', () => {
     auth.signOut().then(() => {
-        // ออกจากระบบสำเร็จ
         handleAdminLogoutSuccess();
     });
 });
 
-// ตัวจัดแจงรีเซ็ตหน้าจอเมื่อยืนยันการออกจากระบบสำเร็จ
 function handleAdminLogoutSuccess() {
     isAdminLoggedIn = false;
     adminPanel.classList.add('hidden');
@@ -422,15 +439,18 @@ function handleAdminLogoutSuccess() {
 }
 
 // ==========================================================================
-// [SECTION 6: ADMIN CONTROL - BANNER & CATEGORIES]
+// [SECTION 6: ADMIN CONTROL - BANNER & CATEGORIES] บันทึกหมวดหมู่และปกไป Firestore
 // ==========================================================================
 
 document.getElementById('saveHeroBtn').addEventListener('click', () => {
-    siteBanner.url = document.getElementById('editHeroUrl').value;
-    siteBanner.title = document.getElementById('editHeroTitle').value;
-    siteBanner.subtitle = document.getElementById('editHeroSub').value;
-    renderBanner();
-    alert("อัปเดตหน้าปกและข้อความเรียบร้อย!");
+    const updateBanner = {
+        url: document.getElementById('editHeroUrl').value,
+        title: document.getElementById('editHeroTitle').value,
+        subtitle: document.getElementById('editHeroSub').value
+    };
+    db.collection("settings").doc("banner").set(updateBanner)
+        .then(() => alert("อัปเดตหน้าปกและข้อความไปยังคลาวด์เรียบร้อย!"))
+        .catch(err => alert("เกิดข้อผิดพลาด: " + err.message));
 });
 
 document.getElementById('addCatBtn').addEventListener('click', () => {
@@ -439,59 +459,85 @@ document.getElementById('addCatBtn').addEventListener('click', () => {
     if(!name) return alert("กรุณากรอกชื่อหมวดหมู่ด้วยครับ");
 
     if(type === "main") {
-        categories.push({ id: 'cat-' + Date.now(), name: name, type: "main", sub: [] });
+        const newId = 'cat-' + Date.now();
+        db.collection("categories").doc(newId).set({
+            name: name,
+            type: "main",
+            sub: [],
+            orderIndex: categories.length
+        });
     } else {
         const targetMain = categories.find(c => c.id === type);
-        if(targetMain) targetMain.sub.push(name);
+        if(targetMain) {
+            const updatedSub = [...(targetMain.sub || []), name];
+            db.collection("categories").doc(type).update({ sub: updatedSub });
+        }
     }
     document.getElementById('newCatName').value = "";
-    saveAllData();
-    renderCategories();
 });
 
 function deleteCategory(mainCatId, type, subIdx = null) {
     if(!confirm("คุณมั่นใจไหมที่จะลบหมวดหมู่นี้?")) return;
-    const idx = categories.findIndex(c => c.id === mainCatId);
-    if(idx === -1) return;
-    if(type === 'main') { categories.splice(idx, 1); } 
-    else if(type === 'sub' && subIdx !== null) { categories[idx].sub.splice(subIdx, 1); }
-    saveAllData();
-    renderCategories();
+    
+    if(type === 'main') { 
+        db.collection("categories").doc(mainCatId).delete();
+    } else if(type === 'sub' && subIdx !== null) { 
+        const targetMain = categories.find(c => c.id === mainCatId);
+        if(targetMain) {
+            const updatedSub = [...targetMain.sub];
+            updatedSub.splice(subIdx, 1);
+            db.collection("categories").doc(mainCatId).update({ sub: updatedSub });
+        }
+    }
 }
 
 function editCategoryName(mainCatId, type, subIdx = null) {
-    const idx = categories.findIndex(c => c.id === mainCatId);
-    if(idx === -1) return;
+    const targetMain = categories.find(c => c.id === mainCatId);
+    if(!targetMain) return;
+
     if(type === 'main') {
-        const oldName = categories[idx].name;
-        const newName = prompt("แก้ไขชื่อหมวดหมู่หลัก:", oldName);
-        if(newName && newName.trim() !== "") categories[idx].name = newName.trim();
+        const newName = prompt("แก้ไขชื่อหมวดหมู่หลัก:", targetMain.name);
+        if(newName && newName.trim() !== "") {
+            db.collection("categories").doc(mainCatId).update({ name: newName.trim() });
+        }
     } else {
-        const oldName = categories[idx].sub[subIdx];
+        const oldName = targetMain.sub[subIdx];
         const newName = prompt("แก้ไขชื่อหมวดหมู่ย่อย:", oldName);
-        if(newName && newName.trim() !== "") categories[idx].sub[subIdx] = newName.trim();
+        if(newName && newName.trim() !== "") {
+            const updatedSub = [...targetMain.sub];
+            updatedSub[subIdx] = newName.trim();
+            db.collection("categories").doc(mainCatId).update({ sub: updatedSub });
+        }
     }
-    saveAllData();
-    renderCategories();
 }
 
 function moveCategory(index, direction) {
-    if (direction === 'up' && index > 0) { let temp = categories[index]; categories[index] = categories[index - 1]; categories[index - 1] = temp; } 
-    else if (direction === 'down' && index < categories.length - 1) { let temp = categories[index]; categories[index] = categories[index + 1]; categories[index + 1] = temp; }
-    saveAllData();
-    renderCategories();
+    let targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= categories.length) return;
+
+    const batch = db.batch();
+    const cat1 = db.collection("categories").doc(categories[index].id);
+    const cat2 = db.collection("categories").doc(categories[targetIndex].id);
+
+    batch.update(cat1, { orderIndex: targetIndex });
+    batch.update(cat2, { orderIndex: index });
+    batch.commit();
 }
 
 function moveSubCategory(mainIdx, subIdx, direction) {
+    let targetSubIdx = direction === 'up' ? subIdx - 1 : subIdx + 1;
     let subList = categories[mainIdx].sub;
-    if (direction === 'up' && subIdx > 0) { let temp = subList[subIdx]; subList[subIdx] = subList[subIdx - 1]; subList[subIdx - 1] = temp; } 
-    else if (direction === 'down' && subIdx < subList.length - 1) { let temp = subList[subIdx]; subList[subIdx] = subList[subIdx + 1]; subList[subIdx + 1] = temp; }
-    saveAllData();
-    renderCategories();
+    if (targetSubIdx < 0 || targetSubIdx >= subList.length) return;
+
+    let temp = subList[subIdx];
+    subList[subIdx] = subList[targetSubIdx];
+    subList[targetSubIdx] = temp;
+
+    db.collection("categories").doc(categories[mainIdx].id).update({ sub: subList });
 }
 
 // ==========================================================================
-// [SECTION 7: ADMIN CONTROL - PRODUCT MGR]
+// [SECTION 7: ADMIN CONTROL - PRODUCT MGR] จัดการสินค้า ขึ้น-ลง Cloud Firestore
 // ==========================================================================
 
 function setupAdminForms() {
@@ -514,21 +560,30 @@ function setupAdminForms() {
             return;
         }
 
+        const productData = {
+            name, img, price, discountCode, shopee1, shopee2, 
+            subCategory: subCat, 
+            keywords: keywords
+        };
+
         if(editingProductId) {
-            const pIdx = products.findIndex(p => p.id === editingProductId);
-            if(pIdx !== -1) {
-                products[pIdx] = { ...products[pIdx], name, img, price, discountCode, shopee1, shopee2, subCategory: subCat, keywords: keywords };
-                alert("แก้ไขรายละเอียดสินค้าสำเร็จ!");
-            }
-            resetProductForm();
+            db.collection("products").doc(editingProductId).update(productData)
+                .then(() => {
+                    alert("แก้ไขรายละเอียดสินค้าสำเร็จ!");
+                    resetProductForm();
+                })
+                .catch(err => alert("เกิดข้อผิดพลาด: " + err.message));
         } else {
-            const newProd = { id: 'p-' + Date.now(), name, img, price, discountCode, shopee1, shopee2, subCategory: subCat, keywords: keywords };
-            products.push(newProd);
-            alert("เพิ่มสินค้าชิ้นใหม่เรียบร้อย!");
-            resetProductForm();
+            const newId = 'p-' + Date.now();
+            productData.orderIndex = products.length; // วางต่อท้ายแถวชิ้นล่าสุด
+            
+            db.collection("products").doc(newId).set(productData)
+                .then(() => {
+                    alert("เพิ่มสินค้าชิ้นใหม่เรียบร้อย!");
+                    resetProductForm();
+                })
+                .catch(err => alert("เกิดข้อผิดพลาด: " + err.message));
         }
-        saveAllData(); 
-        renderProducts();
     });
 
     cancelEditBtn.addEventListener('click', () => { resetProductForm(); });
@@ -557,10 +612,11 @@ function editProduct(id) {
 
 function deleteProduct(id) {
     if(confirm("ยืนยันที่จะลบสินค้าชิ้นนี้ออกอย่างถาวรใช่ไหม?")) {
-        products = products.filter(p => p.id !== id);
-        if(editingProductId === id) resetProductForm();
-        saveAllData();
-        renderProducts();
+        db.collection("products").doc(id).delete()
+            .then(() => {
+                if(editingProductId === id) resetProductForm();
+            })
+            .catch(err => alert("ลบไม่สำเร็จ: " + err.message));
     }
 }
 
@@ -581,7 +637,7 @@ function resetProductForm() {
 }
 
 // ==========================================================================
-// [SECTION 8: IN-LINE PRODUCT GRID DRAG SORTING] 
+// [SECTION 8: IN-LINE PRODUCT GRID DRAG SORTING] บันทึกการลากจัดอันดับสินค้าด่วน
 // ==========================================================================
 
 function initGridSortable() {
@@ -622,30 +678,38 @@ function setupProductGridOrderSave() {
         }
 
         const newlySortedIds = Array.from(cards).map(card => card.getAttribute('data-product-id'));
+        const batch = db.batch();
 
         if (currentFilter === "all") {
-            const newlySortedProducts = [];
-            newlySortedIds.forEach(id => {
-                const match = products.find(p => p.id === id);
-                if (match) newlySortedProducts.push(match);
+            // อัปเดตตำแหน่งสินค้าทุกชิ้นตามลำดับใหม่
+            newlySortedIds.forEach((id, index) => {
+                const docRef = db.collection("products").doc(id);
+                batch.update(docRef, { orderIndex: index });
             });
-            products = newlySortedProducts;
         } else {
-            const otherCategoriesData = products.filter(p => p.subCategory !== currentFilter);
+            // ดึงสินค้าในกลุ่มหมวดหมู่อื่นเพื่อรักษาดัชนีเดิมไว้
+            const otherProducts = products.filter(p => p.subCategory !== currentFilter);
+            otherProducts.sort((a,b) => (a.orderIndex || 0) - (b.orderIndex || 0));
 
-            const currentCategorySortedData = [];
-            newlySortedIds.forEach(id => {
-                const match = products.find(p => p.id === id);
-                if (match) currentCategorySortedData.push(match);
+            // มัดตำแหน่งกลุ่มสินค้าจัดเรียงด่วนล่าสุด
+            newlySortedIds.forEach((id, index) => {
+                const docRef = db.collection("products").doc(id);
+                batch.update(docRef, { orderIndex: index });
             });
 
-            products = [...currentCategorySortedData, ...otherCategoriesData];
+            // ต่อตำแหน่งกลุ่มสินค้าหมวดหมู่อื่นให้อยู่ถัดไป
+            otherProducts.forEach((prod, index) => {
+                const docRef = db.collection("products").doc(prod.id);
+                batch.update(docRef, { orderIndex: newlySortedIds.length + index });
+            });
         }
 
-        saveAllData();
-        renderProducts();
-
-        const messageScope = currentFilter === "all" ? "สินค้าทั้งหมดของร้าน" : `หมวดหมู่ "${currentFilter}"`;
-        alert(`👑 บันทึกอันดับการจัดวางสินค้าในส่วน ${messageScope} เรียบร้อย! ตำแหน่งนี้จะถูกนำไปใช้แสดงผลหน้าร้านอย่างถาวรครับ`);
+        // สั่งบันทึกกลุ่มคำสั่งงานแบบยกล็อตไปยังระบบ Firestore
+        batch.commit()
+            .then(() => {
+                const messageScope = currentFilter === "all" ? "สินค้าทั้งหมดของร้าน" : `หมวดหมู่ "${currentFilter}"`;
+                alert(`👑 บันทึกอันดับการจัดวางสินค้าในส่วน ${messageScope} ไปยังระบบคลาวด์เรียบร้อย!`);
+            })
+            .catch(err => alert("บันทึกลำดับไม่สำเร็จ: " + err.message));
     });
 }
