@@ -111,7 +111,16 @@ document.addEventListener("DOMContentLoaded", () => {
 // ==========================================================================
 
 function renderBanner() {
-    document.getElementById('heroSection').style.backgroundImage = `url('${siteBanner.url}')`;
+    // แก้ไขจากการเปลี่ยน backgroundImage ที่ตัว #heroSection โดยตรง
+    // ให้เปลี่ยนมาใส่ src ของแท็ก img ด้านใน เพื่อควบคุมอัตราส่วนรูปภาพได้ 100% 
+    const bannerImg = document.getElementById('heroImage');
+    if (bannerImg) {
+        bannerImg.src = siteBanner.url;
+    } else {
+        // กรณีโค้ด HTML เดิมยังไม่ปรับ ให้ใช้แบบพื้นหลังสำรอง
+        document.getElementById('heroSection').style.backgroundImage = `url('${siteBanner.url}')`;
+    }
+    
     document.getElementById('heroTitle').innerText = siteBanner.title;
     document.getElementById('heroSubtitle').innerText = siteBanner.subtitle;
 }
