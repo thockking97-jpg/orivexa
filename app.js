@@ -35,18 +35,16 @@ function loadAllData() {
         if (doc.exists) {
             siteBanner = doc.data();
         } else {
-            // หากไม่มีข้อมูลในระบบ ให้บันทึกค่าตั้งต้นลงไป
             db.collection("settings").doc("banner").set(siteBanner);
         }
         renderBanner();
     });
 
-    // 2. ดึงและติดตามข้อมูลหมวดหมู่สินค้า (เรียงตามลำดับดัชนีตำแหน่ง)
+    // 2. ดึงและติดตามข้อมูลหมวดหมู่สินค้า
     db.collection("categories").orderBy("orderIndex", "asc").onSnapshot((snapshot) => {
         if (!snapshot.empty) {
             categories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         } else {
-            // โครงสร้างหมวดหมู่สินค้าเริ่มต้น หากในระบบ Firestore ยังว่างเปล่า
             const defaultCats = [
                 { name: "เครื่องสำอาง", type: "main", sub: ["แป้ง", "ลิปสติก"], orderIndex: 0 },
                 { name: "แฟชั่น", type: "main", sub: ["เสื้อ", "กางเกง"], orderIndex: 1 }
@@ -57,24 +55,13 @@ function loadAllData() {
             categories = defaultCats;
         }
         renderCategories();
-        renderProducts(); // สั่งเรนเดอร์สินค้าใหม่เพื่อให้ตัวเลือกหมวดหมู่ย่อยในฟอร์มทำงานถูกต้อง
+        renderProducts();
     });
 
-    // 3. ดึงและติดตามข้อมูลรายการสินค้าทั้งหมด (เรียงลำดับตามตำแหน่งที่จัดไว้)
+    // 3. ดึงและติดตามข้อมูลรายการสินค้าทั้งหมด (ปรับแก้ไม่ให้เด้งกลับเมื่อกดลบ)
     db.collection("products").orderBy("orderIndex", "asc").onSnapshot((snapshot) => {
-        if (!snapshot.empty) {
-            products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        } else {
-            // รายการสินค้าตั้งต้น สำหรับเริ่มเปิดร้านค้าบนระบบ Cloud ครั้งแรก
-            const defaultProds = [
-                { name: "ลิปสติกเนื้อแมตต์ ชุ่มชื้นยาวนาน โทนส้มอิฐ เกาหลีสุดๆ", img: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?q=80&w=500", price: 350, discountCode: "25%=2000", shopee1: "https://shopee.co.th", shopee2: "", subCategory: "ลิปสติก", keywords: "lip, กันน้ำ, ติดทน", orderIndex: 0 },
-                { name: "เสื้อเบลเซอร์สไตล์มินิมอล ทรงหลวม แฟชั่นสาวออฟฟิศ ลุคคุณหนู", img: "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?q=80&w=500", price: 1200, discountCode: "10%=500", shopee1: "https://shopee.co.th", shopee2: "https://shopee.co.th", subCategory: "เสื้อ", keywords: "blazer, สูท, กันหนาว", orderIndex: 1 }
-            ];
-            defaultProds.forEach((prod, index) => {
-                db.collection("products").doc('p-' + (Date.now() + index)).set(prod);
-            });
-            products = defaultProds;
-        }
+        // ดึงข้อมูลสินค้าที่อยู่บน Firestore มาเก็บไว้ในตัวแปร products เสมอ (แม้จะเป็นอาเรย์ว่างก็ตาม)
+        products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         renderProducts();
     });
 }
@@ -110,7 +97,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setupLoginEnterKey(); 
     setupProductGridOrderSave(); 
     
-    // ติดตามสถานะการเข้าสู่ระบบผู้ดูแลหลังบ้านจาก Firebase
     auth.onAuthStateChanged((user) => {
         if (user) {
             handleAdminLoginSuccess();
@@ -184,7 +170,6 @@ function renderProducts() {
             return priceB - priceA;
         });
     } else if (currentSortRule === "default") {
-        // เรียงลำดับจากดัชนีของข้อมูล (orderIndex)
         filtered.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
     }
 
@@ -575,7 +560,7 @@ function setupAdminForms() {
                 .catch(err => alert("เกิดข้อผิดพลาด: " + err.message));
         } else {
             const newId = 'p-' + Date.now();
-            productData.orderIndex = products.length; // วางต่อท้ายแถวชิ้นล่าสุด
+            productData.orderIndex = products.length; 
             
             db.collection("products").doc(newId).set(productData)
                 .then(() => {
@@ -681,30 +666,25 @@ function setupProductGridOrderSave() {
         const batch = db.batch();
 
         if (currentFilter === "all") {
-            // อัปเดตตำแหน่งสินค้าทุกชิ้นตามลำดับใหม่
             newlySortedIds.forEach((id, index) => {
                 const docRef = db.collection("products").doc(id);
                 batch.update(docRef, { orderIndex: index });
             });
         } else {
-            // ดึงสินค้าในกลุ่มหมวดหมู่อื่นเพื่อรักษาดัชนีเดิมไว้
             const otherProducts = products.filter(p => p.subCategory !== currentFilter);
             otherProducts.sort((a,b) => (a.orderIndex || 0) - (b.orderIndex || 0));
 
-            // มัดตำแหน่งกลุ่มสินค้าจัดเรียงด่วนล่าสุด
             newlySortedIds.forEach((id, index) => {
                 const docRef = db.collection("products").doc(id);
                 batch.update(docRef, { orderIndex: index });
             });
 
-            // ต่อตำแหน่งกลุ่มสินค้าหมวดหมู่อื่นให้อยู่ถัดไป
             otherProducts.forEach((prod, index) => {
                 const docRef = db.collection("products").doc(prod.id);
                 batch.update(docRef, { orderIndex: newlySortedIds.length + index });
             });
         }
 
-        // สั่งบันทึกกลุ่มคำสั่งงานแบบยกล็อตไปยังระบบ Firestore
         batch.commit()
             .then(() => {
                 const messageScope = currentFilter === "all" ? "สินค้าทั้งหมดของร้าน" : `หมวดหมู่ "${currentFilter}"`;
