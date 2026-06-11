@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ORIVEXA เครื่องสำอาง & แฟชั่น ครบจบที่เดียว  </title>
     
-    <!-- 🌟 ใส่รูปภาพไอคอนบนแท็บ Title (Favicon) ด้วยลิงก์ของคุณ -->
     <link rel="icon" type="image/png" href="https://i.postimg.cc/z5jpRhyT/Chat-GPT-Image-11-m-y-2569-18-03-32.png">
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -44,7 +43,6 @@
         </div>
     </div>
 
-    <!-- 🌟 ปรับปรุงส่วนหน้าปก (Hero Section) ให้กว้างสมดุลและจัดกึ่งกลางอัตโนบัติตามขนาดขอบเขตหลักของหน้าเว็บ -->
     <div class="max-w-6xl mx-auto px-4 mt-4">
         <header id="heroSection" class="relative bg-[#EAE2B7] h-[220px] md:h-[360px] flex items-center justify-center bg-cover bg-center transition-all rounded-3xl overflow-hidden shadow-sm" style="background-image: url('https://images.unsplash.com/photo-1596462502278-27bfdc403348?q=80&w=1200');">
             <div class="absolute inset-0 bg-black/20"></div>
@@ -65,8 +63,19 @@
     <main class="max-w-6xl mx-auto px-4 py-8 flex flex-col md:flex-row gap-6">
         <aside class="w-full md:w-1/4">
             <div class="bg-white p-4 rounded-2xl shadow-sm border border-[#F0EAE5]">
-                <h2 class="font-bold text-lg mb-3 text-[#4A4A4A] hidden md:block"><i class="fa-solid fa-bars-staggered mr-2 text-[#D4A373]"></i>หมวดหมู่สินค้า</h2>
-                <div id="categoryMenu" class="flex md:flex-col overflow-x-auto md:overflow-x-visible space-x-2 md:space-x-0 md:space-y-1 pb-2 md:pb-0 scrollbar-none">
+                <div class="mb-3">
+                    <h2 class="font-bold text-base md:text-lg text-[#4A4A4A]">
+                        <i class="fa-solid fa-bars-staggered mr-2 text-[#D4A373]"></i>หมวดหมู่สินค้า
+                    </h2>
+                </div>
+                
+                <div id="categoryMenu" class="flex flex-row md:flex-col gap-1.5 md:space-y-1 overflow-x-auto whitespace-nowrap scrollbar-none pb-2 md:pb-0">
+                </div>
+
+                <div class="block md:hidden text-center mt-2.5 pt-2 border-t border-dashed border-gray-100">
+                    <button id="mobileMenuToggleBtn" onclick="toggleMobileMenu()" class="w-full bg-amber-50 hover:bg-amber-100/70 text-[#D4A373] border border-amber-200 text-xs font-semibold py-2 rounded-xl flex items-center justify-center gap-1.5 transition active:scale-[0.98]">
+                        <i class="fa-solid fa-list-ul"></i> <span id="toggleBtnText">ดูหมวดหมู่ทั้งหมด</span>
+                    </button>
                 </div>
             </div>
         </aside>
@@ -127,14 +136,14 @@
                 </div>
 
                 <div class="bg-[#FAF7F5] p-5 rounded-2xl border border-[#E8E1DB]">
-                    <h3 class="font-bold text-md text-[#D4A373] mb-4"><i class="fa-solid fa-tags mr-2"></i>2. จัดการหมวดหมู่ (หลัก/ย่อย)</h3>
+                    <h3 class="font-bold text-md text-[#D4A373] mb-4"><i class="fa-solid fa-tags mr-2"></i>2. จัดการหมวดหมู่ (3 ชั้นลึก)</h3>
                     <div class="bg-white p-3 rounded-xl border mb-4 space-y-2">
                         <p class="text-xs font-bold text-gray-500">เพิ่มหมวดหมู่ใหม่</p>
-                        <select id="catTypeSelect" class="w-full p-1.5 border text-xs rounded-lg"></select>
-                        <input type="text" id="newCatName" placeholder="ชื่อหมวดหมู่" class="w-full p-1.5 border text-xs rounded-lg focus:outline-none">
+                        <select id="catTypeSelect" class="w-full p-1.5 border text-xs rounded-lg bg-white"></select>
+                        <input type="text" id="newCatName" placeholder="ชื่อหมวดหมู่ที่ต้องการเพิ่ม" class="w-full p-1.5 border text-xs rounded-lg focus:outline-none">
                         <button id="addCatBtn" class="w-full py-1.5 bg-neutral-700 text-white text-xs rounded-lg font-bold hover:bg-black transition">เพิ่มหมวดหมู่</button>
                     </div>
-                    <div class="space-y-2 max-h-[220px] overflow-y-auto pr-1" id="adminCategoryList"></div>
+                    <div class="space-y-2 max-h-[250px] overflow-y-auto pr-1" id="adminCategoryList"></div>
                 </div>
 
                 <div id="productFormContainer" class="bg-[#FAF7F5] p-5 rounded-2xl border border-[#E8E1DB]">
@@ -144,8 +153,14 @@
                     </div>
                     <div class="space-y-2.5 text-xs">
                         <div>
-                            <label class="block text-gray-500 mb-0.5">เลือกหมวดหมู่ย่อยสำหรับสินค้า</label>
+                            <label class="block text-gray-500 mb-0.5">เลือกหมวดหมู่ย่อยชั้นที่ 1 (Sub-category)</label>
                             <select id="prodSubCatSelect" class="w-full p-2 border rounded-xl bg-white"></select>
+                        </div>
+                        <div>
+                            <label class="block text-amber-700 font-bold mb-0.5">เลือกหมวดหมู่ย่อยลึกชั้นที่ 2 (Child-category)</label>
+                            <select id="prodChildCatSelect" class="w-full p-2 border border-amber-200 rounded-xl bg-white">
+                                <option value="">-- ไม่มีหมวดหมู่ย่อยชั้นที่ 2 --</option>
+                            </select>
                         </div>
                         <div>
                             <label class="block text-gray-500 mb-0.5">ชื่อสินค้า</label>

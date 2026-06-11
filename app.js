@@ -11,7 +11,6 @@ const firebaseConfig = {
   measurementId: "G-H3D0ZBHEFB"
 };
 
-// สั่งเปิดตัวเชื่อมต่อ Firebase
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
@@ -28,9 +27,7 @@ let siteBanner = {
 let categories = [];
 let products = [];
 
-// ฟังก์ชันโหลดข้อมูลหลักจาก Cloud Firestore แบบเรียลไทม์
 function loadAllData() {
-    // 1. ดึงและติดตามข้อมูลแบนเนอร์ร้านค้า
     db.collection("settings").doc("banner").onSnapshot((doc) => {
         if (doc.exists) {
             siteBanner = doc.data();
@@ -40,14 +37,28 @@ function loadAllData() {
         renderBanner();
     });
 
-    // 2. ดึงและติดตามข้อมูลหมวดหมู่สินค้า
+    // ดึงข้อมูลหมวดหมู่ (พร้อมตัวดักจับป้องกันข้อมูลอาร์เรย์แบบเก่าชนกับ Object ใหม่)
     db.collection("categories").orderBy("orderIndex", "asc").onSnapshot((snapshot) => {
         if (!snapshot.empty) {
-            categories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            categories = snapshot.docs.map(doc => {
+                const data = doc.data();
+                // 🛠️ จุดแก้ไขสำคัญป้องกันบัค "• 0": หากฐานข้อมูลเดิมเป็น Array ให้แปลงเป็นโครงสร้าง Object อัตโนมัติ
+                if (Array.isArray(data.sub)) {
+                    let newSubObj = {};
+                    data.sub.forEach(subName => {
+                        if(subName !== "0" && subName !== 0) {
+                            newSubObj[subName] = [];
+                        }
+                    });
+                    data.sub = newSubObj;
+                }
+                return { id: doc.id, ...data };
+            });
         } else {
+            // โครงสร้างมาตรฐานแบบใหม่แบบ Object รองรับ 3 ชั้นลึกสุด
             const defaultCats = [
-                { name: "เครื่องสำอาง", type: "main", sub: ["แป้ง", "ลิปสติก"], orderIndex: 0 },
-                { name: "แฟชั่น", type: "main", sub: ["เสื้อ", "กางเกง"], orderIndex: 1 }
+                { name: "เครื่องสำอาง", type: "main", sub: { "แป้ง": ["แป้งพัฟ", "แป้งฝุ่น"], "ลิปสติก": [] }, orderIndex: 0 },
+                { name: "แฟชั่น", type: "main", sub: { "เสื้อ": [], "กางเกง": [] }, orderIndex: 1 }
             ];
             defaultCats.forEach((cat, index) => {
                 db.collection("categories").doc('cat-' + (Date.now() + index)).set(cat);
@@ -55,12 +66,11 @@ function loadAllData() {
             categories = defaultCats;
         }
         renderCategories();
+        setupAdminCategorySelects();
         renderProducts();
     });
 
-    // 3. ดึงและติดตามข้อมูลรายการสินค้าทั้งหมด (ปรับแก้ไม่ให้เด้งกลับเมื่อกดลบ)
     db.collection("products").orderBy("orderIndex", "asc").onSnapshot((snapshot) => {
-        // ดึงข้อมูลสินค้าที่อยู่บน Firestore มาเก็บไว้ในตัวแปร products เสมอ (แม้จะเป็นอาเรย์ว่างก็ตาม)
         products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         renderProducts();
     });
@@ -71,6 +81,7 @@ function loadAllData() {
 // ==========================================================================
 let isAdminLoggedIn = false;     
 let currentFilter = "all";       
+let currentFilterType = "all";   // 'all', 'sub', 'child'
 let searchKeyword = "";          
 let editingProductId = null;     
 let currentSortRule = "default"; 
@@ -109,18 +120,13 @@ document.addEventListener("DOMContentLoaded", () => {
 // ==========================================================================
 // [SECTION 4: FRONTEND RENDER LOGIC] ส่วนการดึงข้อมูลไปวาดแสดงผลหน้าร้านค้า
 // ==========================================================================
-
 function renderBanner() {
-    // แก้ไขจากการเปลี่ยน backgroundImage ที่ตัว #heroSection โดยตรง
-    // ให้เปลี่ยนมาใส่ src ของแท็ก img ด้านใน เพื่อควบคุมอัตราส่วนรูปภาพได้ 100% 
     const bannerImg = document.getElementById('heroImage');
     if (bannerImg) {
         bannerImg.src = siteBanner.url;
     } else {
-        // กรณีโค้ด HTML เดิมยังไม่ปรับ ให้ใช้แบบพื้นหลังสำรอง
         document.getElementById('heroSection').style.backgroundImage = `url('${siteBanner.url}')`;
     }
-    
     document.getElementById('heroTitle').innerText = siteBanner.title;
     document.getElementById('heroSubtitle').innerText = siteBanner.subtitle;
 }
@@ -158,7 +164,15 @@ function renderProducts() {
     grid.innerHTML = "";
 
     let filtered = products.filter(p => {
-        const matchesCategory = (currentFilter === "all" || p.subCategory === currentFilter);
+        let matchesCategory = false;
+        if (currentFilter === "all") {
+            matchesCategory = true;
+        } else if (currentFilterType === "sub") {
+            matchesCategory = (p.subCategory === currentFilter);
+        } else if (currentFilterType === "child") {
+            matchesCategory = (p.childCategory === currentFilter);
+        }
+
         const cleanQuery = searchKeyword.toLowerCase().trim();
         const matchesName = p.name ? p.name.toLowerCase().includes(cleanQuery) : false;
         const productKeywordsStr = p.keywords ? p.keywords.toLowerCase() : "";
@@ -167,17 +181,9 @@ function renderProducts() {
     });
 
     if (currentSortRule === "price-asc") {
-        filtered.sort((a, b) => {
-            const priceA = calculateDiscountPrice(a.price, a.discountCode).finalPrice;
-            const priceB = calculateDiscountPrice(b.price, b.discountCode).finalPrice;
-            return priceA - priceB;
-        });
+        filtered.sort((a, b) => calculateDiscountPrice(a.price, a.discountCode).finalPrice - calculateDiscountPrice(b.price, b.discountCode).finalPrice);
     } else if (currentSortRule === "price-desc") {
-        filtered.sort((a, b) => {
-            const priceA = calculateDiscountPrice(a.price, a.discountCode).finalPrice;
-            const priceB = calculateDiscountPrice(b.price, b.discountCode).finalPrice;
-            return priceB - priceA;
-        });
+        filtered.sort((a, b) => calculateDiscountPrice(b.price, b.discountCode).finalPrice - calculateDiscountPrice(a.price, a.discountCode).finalPrice);
     } else if (currentSortRule === "default") {
         filtered.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
     }
@@ -208,7 +214,7 @@ function renderProducts() {
         let dragHandleHTML = "";
         if(isAdminLoggedIn) {
             dragHandleHTML = `
-                <div class="absolute top-2 left-2 bg-black/60 text-white w-7 h-7 rounded-full text-xs shadow cursor-grab active:cursor-grabbing flex items-center justify-center z-20 main-grid-handle" title="ลากการ์ดชิ้นนี้เพื่อสลับอันดับ">
+                <div class="absolute top-2 left-2 bg-black/60 text-white w-7 h-7 rounded-full text-xs shadow cursor-grab active:cursor-grabbing flex items-center justify-center z-20 main-grid-handle">
                     <i class="fa-solid fa-up-down-left-right text-[10px]"></i>
                 </div>
             `;
@@ -220,28 +226,29 @@ function renderProducts() {
             `;
         }
 
-        const displayOriginalPrice = Math.ceil(p.price);
-
         const card = document.createElement('div');
         card.className = "product-card bg-white rounded-2xl overflow-hidden border border-[#F0EAE5] shadow-sm hover:shadow-md transition relative flex flex-col justify-between";
         card.setAttribute('data-product-id', p.id);
+        
+        const breadcrumbText = p.childCategory ? `${p.subCategory} ➔ ${p.childCategory}` : p.subCategory;
+
         card.innerHTML = `
             ${dragHandleHTML}
             ${adminControls}
             <div>
                 <div class="aspect-square w-full overflow-hidden bg-gray-100 relative">
-                    <img src="${p.img || 'https://via.placeholder.com/400'}" class="w-full h-full object-cover shadow-inner" alt="Product Image">
+                    <img src="${p.img || 'https://via.placeholder.com/400'}" class="w-full h-full object-cover shadow-inner">
                     ${discInfo.hasDiscount ? `<span class="absolute bottom-2 left-2 bg-[#EE4D2D] text-white text-[10px] font-bold px-1.5 py-0.5 rounded">ลดพิเศษ</span>` : ''}
                 </div>
                 <div class="p-3">
-                    <p class="text-xs text-gray-400 mb-1"># ${p.subCategory}</p>
+                    <p class="text-[10px] text-amber-600 font-medium mb-1 truncate"># ${breadcrumbText}</p>
                     <h4 class="font-medium text-xs md:text-sm text-[#4A4A4A] line-clamp-2 h-8 md:h-10 mb-2">${p.name}</h4>
                 </div>
             </div>
             <div class="p-3 pt-0">
                 <div class="flex items-baseline space-x-1.5 mb-3">
                     <span class="text-sm md:text-base font-bold text-[#EE4D2D]">฿${discInfo.finalPrice.toLocaleString()}</span>
-                    ${discInfo.hasDiscount ? `<span class="text-[10px] md:text-xs text-gray-400 line-through">฿${displayOriginalPrice.toLocaleString()}</span>` : ''}
+                    ${discInfo.hasDiscount ? `<span class="text-[10px] md:text-xs text-gray-400 line-through">฿${Math.ceil(p.price).toLocaleString()}</span>` : ''}
                 </div>
                 ${shopeeButtonsHTML}
             </div>
@@ -252,40 +259,82 @@ function renderProducts() {
     initGridSortable();
 }
 
+// ==========================================================================
+// [ADDED FUNCTIONS] ระบบเปิด-ปิดสลับการแสดงผล และ Smooth Scroll ไปที่กลุ่มสินค้า
+// ==========================================================================
+
+// ฟังก์ชันเปิด-ปิดสลับโหมดเมนู (สลับระหว่าง "แถวเดียวนอนสไลด์" กับ "ขยายแผ่ออกมาทั้งหมด")
+function toggleMobileMenu() {
+    const menu = document.getElementById('categoryMenu');
+    const btnText = document.getElementById('toggleBtnText');
+    if (!menu || !btnText) return;
+
+    // ตรวจสอบว่าปัจจุบันล็อกบรรทัดเดียว (whitespace-nowrap) อยู่หรือไม่
+    if (menu.classList.contains('whitespace-nowrap')) {
+        // ➔ ถ้าล็อกอยู่: ปลดล็อกออกเพื่อให้ปุ่มไหลลงมาเรียงกันหลายบรรทัด เห็นครบทุกหมวดหมู่
+        menu.classList.remove('whitespace-nowrap', 'overflow-x-auto');
+        menu.classList.add('flex-wrap');
+        btnText.innerText = "พับเก็บเมนู";
+    } else {
+        // ➔ ถ้าขยายอยู่: สลับกลับไปล็อกเป็นแถวเดียวนอนปัดสไลด์ขวาเหมือนเดิม
+        menu.classList.add('whitespace-nowrap', 'overflow-x-auto');
+        menu.classList.remove('flex-wrap');
+        btnText.innerText = "ดูหมวดหมู่ทั้งหมด";
+    }
+}
+
+// ฟังก์ชัน Action เมื่อกดเลือกหมวดหมู่: กรองสินค้า ➔ พับเมนูกลับเป็นแนวนอนบรรทัดเดียว ➔ เลื่อนจอโฟกัสสินค้า
+function selectCategoryFilter(filterName, filterType) {
+    currentFilter = filterName;
+    currentFilterType = filterType;
+    
+    // 1. อัปเดต UI ไฮไลต์ปุ่ม และแสดงสินค้าที่ตรงตัวกรอง
+    updateActiveCategoryUI();
+    renderProducts();
+    
+    // 2. หากเปิดบนจอมือถือและเมนูกำลังแผ่ขยายอยู่ ให้สั่งพับกลับเป็นแถวนอนบรรทัดเดียวทันที
+    const menu = document.getElementById('categoryMenu');
+    if (window.innerWidth < 768 && menu && menu.classList.contains('flex-wrap')) {
+        toggleMobileMenu();
+    }
+    
+    // 3. เลื่อนหน้าจอ (Smooth Scroll) ดึงลงมาที่หัวข้อโซนสินค้า เพื่อให้ลูกค้าพร้อมช้อปทันที
+    const productZone = document.getElementById('currentCategoryTitle');
+    if (productZone) {
+        productZone.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+// ==========================================================================
+// [UPDATED FUNCTION] ฟังก์ชันสร้างเมนูหมวดหมู่ (วางทับแทนที่อันเดิมได้เลย)
+// ==========================================================================
 function renderCategories() {
     const menuContainer = document.getElementById('categoryMenu');
     const adminCatList = document.getElementById('adminCategoryList');
-    const catTypeSelect = document.getElementById('catTypeSelect');
-    const prodSubCatSelect = document.getElementById('prodSubCatSelect');
-
-    if(!menuContainer) return; 
+    if(!menuContainer || !adminCatList) return; 
 
     menuContainer.innerHTML = "";
     adminCatList.innerHTML = "";
-    catTypeSelect.innerHTML = `<option value="main">เป็นหมวดหมู่หลักใหม่</option>`;
-    prodSubCatSelect.innerHTML = "";
 
+    // 🌟 ปุ่มสินค้าทั้งหมด
     const allBtn = document.createElement('button');
-    allBtn.className = `px-3 py-1.5 md:py-2 text-xs md:text-sm font-medium rounded-xl whitespace-nowrap text-left transition ${currentFilter === 'all' ? 'bg-[#D4A373] text-white font-bold' : 'bg-[#FAF7F5] text-gray-600 hover:bg-gray-100'}`;
+    // เพิ่ม flex-shrink-0 เพื่อไม่ให้ปุ่มโดนบีบขนาดในแถวนอน
+    allBtn.className = `px-3 py-1.5 md:py-2 text-xs md:text-sm font-medium rounded-xl whitespace-nowrap text-left transition flex-shrink-0 ${currentFilter === 'all' ? 'bg-[#D4A373] text-white font-bold' : 'bg-[#FAF7F5] text-gray-600 hover:bg-gray-100'}`;
     allBtn.innerText = "🌟 สินค้าทั้งหมด";
-    allBtn.onclick = () => { currentFilter = "all"; updateActiveCategoryUI(allBtn); renderProducts(); };
+    allBtn.onclick = () => selectCategoryFilter("all", "all");
     menuContainer.appendChild(allBtn);
 
     categories.forEach((mainCat, mainIdx) => {
-        const opt = document.createElement('option');
-        opt.value = mainCat.id;
-        opt.innerText = `ผูกเข้ากับหมวดหมู่หลัก: ${mainCat.name}`;
-        catTypeSelect.appendChild(opt);
-
+        // หัวข้อหมวดหมู่หลัก (แสดงบน PC ปกติ แต่บนมือถือจะซ่อนในโหมดแถวนอนเพื่อให้สไลด์ง่ายไม่สะดุดขัดตา)
         const mainTitle = document.createElement('div');
-        mainTitle.className = "text-[11px] uppercase font-bold tracking-wider text-gray-400 mt-3 mb-1 pl-2 hidden md:block";
+        mainTitle.className = "text-[11px] uppercase font-bold tracking-wider text-amber-800 mt-4 mb-1 pl-2 hidden md:block flex-shrink-0";
         mainTitle.innerText = mainCat.name;
         menuContainer.appendChild(mainTitle);
 
         const adminMainRow = document.createElement('div');
-        adminMainRow.className = "bg-white p-2 rounded-xl border flex items-center justify-between text-xs";
+        adminMainRow.className = "bg-amber-50 p-2 rounded-xl border border-amber-200 flex items-center justify-between text-xs mt-2";
         adminMainRow.innerHTML = `
-            <div class="font-bold text-[#4A4A4A]">${mainCat.name} <span class="text-[10px] text-gray-400 font-normal">(หลัก)</span></div>
+            <div class="font-bold text-[#4A4A4A]">${mainCat.name} <span class="text-[9px] text-amber-600">(หลัก)</span></div>
             <div class="flex items-center space-x-1.5">
                 <button onclick="moveCategory(${mainIdx}, 'up')" class="text-gray-400 hover:text-black"><i class="fa-solid fa-arrow-up"></i></button>
                 <button onclick="moveCategory(${mainIdx}, 'down')" class="text-gray-400 hover:text-black"><i class="fa-solid fa-arrow-down"></i></button>
@@ -295,37 +344,50 @@ function renderCategories() {
         `;
         adminCatList.appendChild(adminMainRow);
 
-        if (mainCat.sub && Array.isArray(mainCat.sub)) {
-            mainCat.sub.forEach((subCat, subIdx) => {
-                const subBtn = document.createElement('button');
-                subBtn.className = `px-3 py-1.5 md:py-2 md:pl-5 text-xs rounded-xl whitespace-nowrap text-left transition ${currentFilter === subCat ? 'bg-[#EAE2B7] text-[#4A4A4A] font-bold shadow-sm' : 'bg-[#FAF7F5] text-gray-600 hover:bg-gray-100'}`;
-                subBtn.innerText = `${subCat}`;
-                subBtn.onclick = () => { currentFilter = subCat; updateActiveCategoryUI(subBtn); renderProducts(); };
-                menuContainer.appendChild(subBtn);
+        const subs = mainCat.sub || {};
+        Object.keys(subs).forEach((subCatName) => {
+            if(subCatName === "0") return; // ข้ามค่าขยะ
 
-                const prodSubOpt = document.createElement('option');
-                prodSubOpt.value = subCat;
-                prodSubOpt.innerText = `${mainCat.name} ➔ ${subCat}`;
-                prodSubCatSelect.appendChild(prodSubOpt);
+            // ▪ หมวดหมู่ย่อยชั้นที่ 1
+            const subBtn = document.createElement('button');
+            subBtn.className = `px-3 py-1.5 md:py-2 md:pl-4 text-xs rounded-xl whitespace-nowrap text-left transition flex-shrink-0 ${currentFilter === subCatName && currentFilterType === "sub" ? 'bg-[#EAE2B7] text-[#4A4A4A] font-bold shadow-sm' : 'bg-[#FAF7F5] text-gray-600 hover:bg-gray-100'}`;
+            subBtn.innerText = `▪ ${subCatName}`;
+            subBtn.onclick = () => selectCategoryFilter(subCatName, "sub");
+            menuContainer.appendChild(subBtn);
 
-                const adminSubRow = document.createElement('div');
-                adminSubRow.className = "bg-neutral-50 p-1.5 pl-6 rounded-lg border border-dashed flex items-center justify-between text-xs";
-                adminSubRow.innerHTML = `
-                    <div class="text-gray-600">▪ ${subCat}</div>
-                    <div class="flex items-center space-x-1.5">
-                        <button onclick="moveSubCategory(${mainIdx}, ${subIdx}, 'up')" class="text-gray-400 hover:text-black"><i class="fa-solid fa-arrow-up"></i></button>
-                        <button onclick="moveSubCategory(${mainIdx}, ${subIdx}, 'down')" class="text-gray-400 hover:text-black"><i class="fa-solid fa-arrow-down"></i></button>
-                        <button onclick="editCategoryName('${mainCat.id}', 'sub', ${subIdx})" class="text-blue-500 hover:text-blue-700 mx-0.5"><i class="fa-solid fa-pen"></i></button>
-                        <button onclick="deleteCategory('${mainCat.id}', 'sub', ${subIdx})" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash-can"></i></button>
-                    </div>
+            const adminSubRow = document.createElement('div');
+            adminSubRow.className = "bg-white p-1.5 pl-4 border-b flex items-center justify-between text-xs";
+            adminSubRow.innerHTML = `
+                <div class="text-gray-700 font-medium">➔ ${subCatName}</div>
+                <div class="flex items-center space-x-1.5">
+                    <button onclick="editCategoryName('${mainCat.id}', 'sub', '${subCatName}')" class="text-blue-400 hover:text-blue-600"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                    <button onclick="deleteCategory('${mainCat.id}', 'sub', '${subCatName}')" class="text-red-400 hover:text-red-500"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                </div>
+            `;
+            adminCatList.appendChild(adminSubRow);
+
+            const childList = subs[subCatName] || [];
+            childList.forEach((childCatName) => {
+                // └ หมวดหมู่ย่อยชั้นที่ 2
+                const childBtn = document.createElement('button');
+                childBtn.className = `px-3 py-1.5 md:py-1 md:pl-7 text-[11px] rounded-lg whitespace-nowrap text-left transition flex-shrink-0 ${currentFilter === childCatName && currentFilterType === "child" ? 'bg-amber-100 text-amber-900 font-bold' : 'text-gray-500 hover:bg-gray-100'}`;
+                childBtn.innerText = `└ ${childCatName}`;
+                childBtn.onclick = () => selectCategoryFilter(childCatName, "child");
+                menuContainer.appendChild(childBtn);
+
+                const adminChildRow = document.createElement('div');
+                adminChildRow.className = "bg-gray-50 p-1 pl-8 text-[11px] border-b border-dashed flex items-center justify-between text-gray-400";
+                adminChildRow.innerHTML = `
+                    <div>└─ ${childCatName}</div>
+                    <button onclick="deleteChildCategory('${mainCat.id}', '${subCatName}', '${childCatName}')" class="text-gray-400 hover:text-red-500 p-0.5"><i class="fa-solid fa-xmark"></i></button>
                 `;
-                adminCatList.appendChild(adminSubRow);
+                adminCatList.appendChild(adminChildRow);
             });
-        }
+        });
     });
 }
 
-function updateActiveCategoryUI(activeBtn) {
+function updateActiveCategoryUI() {
     document.getElementById('currentCategoryTitle').innerText = currentFilter === 'all' ? 'สินค้าทั้งหมด' : `หมวดหมู่: ${currentFilter}`;
 }
 
@@ -335,7 +397,7 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
 });
 
 // ==========================================================================
-// [SECTION 5: ADMIN AUTHENTICATION] การเข้าสู่ระบบผู้ดูแลหลังบ้าน
+// [SECTION 5: ADMIN AUTHENTICATION]
 // ==========================================================================
 adminBtn.addEventListener('click', () => { loginModal.classList.remove('hidden'); usernameInput.focus(); });
 closeLoginBtn.addEventListener('click', () => { loginModal.classList.add('hidden'); loginError.classList.add('hidden'); });
@@ -343,23 +405,10 @@ closeLoginBtn.addEventListener('click', () => { loginModal.classList.add('hidden
 function executeLogin() {
     const email = usernameInput.value.trim();
     const password = passwordInput.value;
-
-    if (!email || !password) {
-        loginError.innerText = "กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน";
-        loginError.classList.remove('hidden');
-        return;
-    }
-
+    if (!email || !password) { return; }
     auth.signInWithEmailAndPassword(email, password)
-        .then(() => {
-            loginModal.classList.add('hidden');
-            loginError.classList.add('hidden');
-        })
-        .catch((error) => {
-            console.error(error);
-            loginError.innerText = "อีเมลหรือรหัสผ่านระบบหลังบ้านไม่ถูกต้อง";
-            loginError.classList.remove('hidden');
-        });
+        .then(() => { loginModal.classList.add('hidden'); })
+        .catch(() => { loginError.classList.remove('hidden'); });
 }
 
 submitLoginBtn.addEventListener('click', executeLogin);
@@ -369,25 +418,17 @@ function handleAdminLoginSuccess() {
     adminPanel.classList.remove('hidden'); 
     logoutBtn.classList.remove('hidden');   
     adminBtn.classList.add('hidden');      
-    
     saveOrderBtn.style.display = 'flex';
-
     document.getElementById('editHeroUrl').value = siteBanner.url || "";
     document.getElementById('editHeroTitle').value = siteBanner.title || "";
     document.getElementById('editHeroSub').value = siteBanner.subtitle || "";
-
     injectAdminShortcutMenu();
     renderProducts(); 
     renderCategories();
 }
 
 function setupLoginEnterKey() {
-    const handleEnter = (event) => {
-        if (event.key === "Enter") {
-            event.preventDefault(); 
-            executeLogin();
-        }
-    };
+    const handleEnter = (event) => { if (event.key === "Enter") { executeLogin(); } };
     usernameInput.addEventListener('keydown', handleEnter);
     passwordInput.addEventListener('keydown', handleEnter);
 }
@@ -395,111 +436,156 @@ function setupLoginEnterKey() {
 function injectAdminShortcutMenu() {
     let oldShortcut = document.getElementById('adminShortcutBar');
     if(oldShortcut) oldShortcut.remove();
-
     const shortcutDiv = document.createElement('div');
     shortcutDiv.id = "adminShortcutBar";
     shortcutDiv.className = "bg-amber-50 border border-amber-200 p-4 rounded-2xl mb-6 flex flex-wrap gap-2 items-center text-xs";
-    shortcutDiv.innerHTML = `
-        <span class="font-bold text-amber-800"><i class="fa-solid fa-toolbox mr-1"></i> เครื่องมือจัดการด่วนหลังบ้าน:</span>
-        <a href="price.html" class="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-sm">
-            <i class="fa-solid fa-calculator mr-1"></i> แก้ไขราคา & ส่วนลดแบบกลุ่ม
-        </a>
-        `;
+    shortcutDiv.innerHTML = `<span class="font-bold text-amber-800"><i class="fa-solid fa-toolbox mr-1"></i> ระบบจัดการแบบ 3 ระดับ Active (หลัก > ย่อยชั้น 1 > ย่อยชั้น 2)</span>`;
     adminPanel.insertBefore(shortcutDiv, adminPanel.firstChild);
 }
 
-logoutBtn.addEventListener('click', () => {
-    auth.signOut().then(() => {
-        handleAdminLogoutSuccess();
-    });
-});
+logoutBtn.addEventListener('click', () => { auth.signOut().then(() => { handleAdminLogoutSuccess(); }); });
 
 function handleAdminLogoutSuccess() {
     isAdminLoggedIn = false;
     adminPanel.classList.add('hidden');
     logoutBtn.classList.add('hidden');
     adminBtn.classList.remove('hidden');
-    
     saveOrderBtn.style.display = 'none';
-
-    usernameInput.value = "";
-    passwordInput.value = "";
-    
-    let oldShortcut = document.getElementById('adminShortcutBar');
-    if(oldShortcut) oldShortcut.remove();
-
     resetProductForm();
     renderProducts(); 
 }
 
 // ==========================================================================
-// [SECTION 6: ADMIN CONTROL - BANNER & CATEGORIES] บันทึกหมวดหมู่และปกไป Firestore
+// [SECTION 6: ADMIN CONTROL - CATEGORIES & SELECT CONFIGS]
 // ==========================================================================
+function setupAdminCategorySelects() {
+    const catTypeSelect = document.getElementById('catTypeSelect');
+    const prodSubCatSelect = document.getElementById('prodSubCatSelect');
+    const prodChildCatSelect = document.getElementById('prodChildCatSelect');
 
-document.getElementById('saveHeroBtn').addEventListener('click', () => {
-    const updateBanner = {
-        url: document.getElementById('editHeroUrl').value,
-        title: document.getElementById('editHeroTitle').value,
-        subtitle: document.getElementById('editHeroSub').value
+    if(!catTypeSelect || !prodSubCatSelect || !prodChildCatSelect) return;
+
+    catTypeSelect.innerHTML = `<option value="main">[+] สร้างเป็นหมวดหมู่หลักใหม่</option>`;
+    categories.forEach(c => {
+        catTypeSelect.innerHTML += `<option value="sub:${c.id}">+ เพิ่มชั้นที่ 1 (Sub) ใน: ${c.name}</option>`;
+        const subs = c.sub || {};
+        Object.keys(subs).forEach(subKey => {
+            if(subKey !== "0") {
+                catTypeSelect.innerHTML += `<option value="child:${c.id}:${subKey}">└─ เพิ่มชั้นที่ 2 (Child) ใน: ${c.name} > ${subKey}</option>`;
+            }
+        });
+    });
+
+    prodSubCatSelect.innerHTML = "";
+    categories.forEach(c => {
+        const subs = c.sub || {};
+        Object.keys(subs).forEach(subKey => {
+            if(subKey !== "0") {
+                const opt = document.createElement('option');
+                opt.value = subKey;
+                opt.setAttribute('data-main-id', c.id);
+                opt.innerText = `${c.name} ➔ ${subKey}`;
+                prodSubCatSelect.appendChild(opt);
+            }
+        });
+    });
+
+    const updateChildDropdown = () => {
+        prodChildCatSelect.innerHTML = `<option value="">-- ไม่มีหมวดหมู่ย่อยชั้นที่ 2 --</option>`;
+        const selectedSub = prodSubCatSelect.value;
+        const selectedOption = prodSubCatSelect.options[prodSubCatSelect.selectedIndex];
+        if(!selectedOption) return;
+        
+        const mainId = selectedOption.getAttribute('data-main-id');
+        const mainCat = categories.find(c => c.id === mainId);
+        if(mainCat && mainCat.sub && mainCat.sub[selectedSub]) {
+            mainCat.sub[selectedSub].forEach(child => {
+                prodChildCatSelect.innerHTML += `<option value="${child}">${child}</option>`;
+            });
+        }
     };
-    db.collection("settings").doc("banner").set(updateBanner)
-        .then(() => alert("อัปเดตหน้าปกและข้อความไปยังคลาวด์เรียบร้อย!"))
-        .catch(err => alert("เกิดข้อผิดพลาด: " + err.message));
-});
+
+    prodSubCatSelect.onchange = updateChildDropdown;
+    updateChildDropdown();
+}
 
 document.getElementById('addCatBtn').addEventListener('click', () => {
-    const type = document.getElementById('catTypeSelect').value;
+    const selector = document.getElementById('catTypeSelect').value;
     const name = document.getElementById('newCatName').value.trim();
     if(!name) return alert("กรุณากรอกชื่อหมวดหมู่ด้วยครับ");
 
-    if(type === "main") {
+    if(selector === "main") {
         const newId = 'cat-' + Date.now();
-        db.collection("categories").doc(newId).set({
-            name: name,
-            type: "main",
-            sub: [],
-            orderIndex: categories.length
-        });
+        db.collection("categories").doc(newId).set({ name: name, type: "main", sub: {}, orderIndex: categories.length });
     } else {
-        const targetMain = categories.find(c => c.id === type);
-        if(targetMain) {
-            const updatedSub = [...(targetMain.sub || []), name];
-            db.collection("categories").doc(type).update({ sub: updatedSub });
+        const parts = selector.split(':');
+        const actionType = parts[0];
+        const mainId = parts[1];
+
+        const targetMain = categories.find(c => c.id === mainId);
+        if(!targetMain) return;
+
+        let currentSubObj = { ...targetMain.sub };
+
+        if(actionType === "sub") {
+            if(!currentSubObj[name]) {
+                currentSubObj[name] = [];
+                db.collection("categories").doc(mainId).update({ sub: currentSubObj });
+            } else {
+                alert("มีชื่อหมวดหมู่ย่อยนี้อยู่แล้วในกลุ่มหลักนี้");
+            }
+        } else if(actionType === "child") {
+            const subKey = parts[2];
+            if(currentSubObj[subKey]) {
+                if(!currentSubObj[subKey].includes(name)) {
+                    currentSubObj[subKey].push(name);
+                    db.collection("categories").doc(mainId).update({ sub: currentSubObj });
+                } else {
+                    alert("มีชื่อหมวดหมู่ย่อยชั้นที่ 2 นี้อยู่แล้ว");
+                }
+            }
         }
     }
     document.getElementById('newCatName').value = "";
 });
 
-function deleteCategory(mainCatId, type, subIdx = null) {
-    if(!confirm("คุณมั่นใจไหมที่จะลบหมวดหมู่นี้?")) return;
-    
+function deleteCategory(mainCatId, type, subKey = null) {
+    if(!confirm("คุณมั่นใจไหมที่จะลบหมวดหมู่นี้? ข้อมูลภายในชั้นย่อยทั้งหมดจะหายไป")) return;
     if(type === 'main') { 
         db.collection("categories").doc(mainCatId).delete();
-    } else if(type === 'sub' && subIdx !== null) { 
+    } else if(type === 'sub' && subKey) { 
         const targetMain = categories.find(c => c.id === mainCatId);
         if(targetMain) {
-            const updatedSub = [...targetMain.sub];
-            updatedSub.splice(subIdx, 1);
+            let updatedSub = { ...targetMain.sub };
+            delete updatedSub[subKey];
             db.collection("categories").doc(mainCatId).update({ sub: updatedSub });
         }
     }
 }
 
-function editCategoryName(mainCatId, type, subIdx = null) {
+function deleteChildCategory(mainCatId, subKey, childName) {
+    if(!confirm(`ยืนยันลบหมวดหมู่ย่อยชั้นที่ 2 "${childName}"?`)) return;
+    const targetMain = categories.find(c => c.id === mainCatId);
+    if(targetMain && targetMain.sub && targetMain.sub[subKey]) {
+        let updatedSub = { ...targetMain.sub };
+        updatedSub[subKey] = updatedSub[subKey].filter(item => item !== childName);
+        db.collection("categories").doc(mainCatId).update({ sub: updatedSub });
+    }
+}
+
+function editCategoryName(mainCatId, type, oldSubKey = null) {
     const targetMain = categories.find(c => c.id === mainCatId);
     if(!targetMain) return;
 
     if(type === 'main') {
         const newName = prompt("แก้ไขชื่อหมวดหมู่หลัก:", targetMain.name);
-        if(newName && newName.trim() !== "") {
-            db.collection("categories").doc(mainCatId).update({ name: newName.trim() });
-        }
-    } else {
-        const oldName = targetMain.sub[subIdx];
-        const newName = prompt("แก้ไขชื่อหมวดหมู่ย่อย:", oldName);
-        if(newName && newName.trim() !== "") {
-            const updatedSub = [...targetMain.sub];
-            updatedSub[subIdx] = newName.trim();
+        if(newName && newName.trim() !== "") db.collection("categories").doc(mainCatId).update({ name: newName.trim() });
+    } else if(type === 'sub' && oldSubKey) {
+        const newName = prompt("แก้ไขชื่อหมวดหมู่ย่อยชั้นที่ 1:", oldSubKey);
+        if(newName && newName.trim() !== "" && newName.trim() !== oldSubKey) {
+            let updatedSub = { ...targetMain.sub };
+            updatedSub[newName.trim()] = updatedSub[oldSubKey]; 
+            delete updatedSub[oldSubKey]; 
             db.collection("categories").doc(mainCatId).update({ sub: updatedSub });
         }
     }
@@ -508,38 +594,31 @@ function editCategoryName(mainCatId, type, subIdx = null) {
 function moveCategory(index, direction) {
     let targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= categories.length) return;
-
     const batch = db.batch();
-    const cat1 = db.collection("categories").doc(categories[index].id);
-    const cat2 = db.collection("categories").doc(categories[targetIndex].id);
-
-    batch.update(cat1, { orderIndex: targetIndex });
-    batch.update(cat2, { orderIndex: index });
+    batch.update(db.collection("categories").doc(categories[index].id), { orderIndex: targetIndex });
+    batch.update(db.collection("categories").doc(categories[targetIndex].id), { orderIndex: index });
     batch.commit();
 }
 
-function moveSubCategory(mainIdx, subIdx, direction) {
-    let targetSubIdx = direction === 'up' ? subIdx - 1 : subIdx + 1;
-    let subList = categories[mainIdx].sub;
-    if (targetSubIdx < 0 || targetSubIdx >= subList.length) return;
-
-    let temp = subList[subIdx];
-    subList[subIdx] = subList[targetSubIdx];
-    subList[targetSubIdx] = temp;
-
-    db.collection("categories").doc(categories[mainIdx].id).update({ sub: subList });
-}
+document.getElementById('saveHeroBtn').addEventListener('click', () => {
+    const updateBanner = {
+        url: document.getElementById('editHeroUrl').value,
+        title: document.getElementById('editHeroTitle').value,
+        subtitle: document.getElementById('editHeroSub').value
+    };
+    db.collection("settings").doc("banner").set(updateBanner).then(() => alert("อัปเดตหน้าปกสำเร็จ"));
+});
 
 // ==========================================================================
-// [SECTION 7: ADMIN CONTROL - PRODUCT MGR] จัดการสินค้า ขึ้น-ลง Cloud Firestore
+// [SECTION 7: ADMIN CONTROL - PRODUCT MGR]
 // ==========================================================================
-
 function setupAdminForms() {
     const saveProductBtn = document.getElementById('saveProductBtn');
     const cancelEditBtn = document.getElementById('cancelEditBtn');
 
     saveProductBtn.addEventListener('click', () => {
         const subCat = document.getElementById('prodSubCatSelect').value;
+        const childCat = document.getElementById('prodChildCatSelect').value; 
         const name = document.getElementById('prodName').value.trim();
         const img = document.getElementById('prodImgUrl').value.trim();
         const keywords = document.getElementById('prodKeywords').value.trim();
@@ -550,33 +629,25 @@ function setupAdminForms() {
         const shopee2 = document.getElementById('prodShopee2').value.trim();
 
         if(!subCat || !name || isNaN(price)) {
-            alert("กรุณากรอก หมวดหมู่, ชื่อสินค้า และราคาปกติ ให้ครบถ้วน");
+            alert("กรุณากรอกข้อมูลหลักให้ครบถ้วน");
             return;
         }
 
         const productData = {
             name, img, price, discountCode, shopee1, shopee2, 
             subCategory: subCat, 
+            childCategory: childCat || "", 
             keywords: keywords
         };
 
         if(editingProductId) {
             db.collection("products").doc(editingProductId).update(productData)
-                .then(() => {
-                    alert("แก้ไขรายละเอียดสินค้าสำเร็จ!");
-                    resetProductForm();
-                })
-                .catch(err => alert("เกิดข้อผิดพลาด: " + err.message));
+                .then(() => { alert("แก้ไขรายละเอียดสินค้าสำเร็จ!"); resetProductForm(); });
         } else {
             const newId = 'p-' + Date.now();
             productData.orderIndex = products.length; 
-            
             db.collection("products").doc(newId).set(productData)
-                .then(() => {
-                    alert("เพิ่มสินค้าชิ้นใหม่เรียบร้อย!");
-                    resetProductForm();
-                })
-                .catch(err => alert("เกิดข้อผิดพลาด: " + err.message));
+                .then(() => { alert("เพิ่มสินค้าชิ้นใหม่สำเร็จ!"); resetProductForm(); });
         }
     });
 
@@ -589,10 +660,13 @@ function editProduct(id) {
     editingProductId = id;
     document.getElementById('formModeTitle').innerHTML = `<i class="fa-solid fa-pen-to-square mr-2 text-amber-500"></i>แก้ไขสินค้า`;
     document.getElementById('cancelEditBtn').classList.remove('hidden');
-    document.getElementById('saveProductBtn').innerText = "บันทึกการแก้ไขสินค้า";
-    document.getElementById('saveProductBtn').className = "w-full py-2.5 bg-amber-500 text-white font-bold rounded-xl shadow-sm hover:bg-amber-600 transition mt-2 text-sm";
-
+    
     document.getElementById('prodSubCatSelect').value = p.subCategory;
+    if(document.getElementById('prodSubCatSelect').onchange) {
+        document.getElementById('prodSubCatSelect').onchange();
+    }
+    document.getElementById('prodChildCatSelect').value = p.childCategory || "";
+
     document.getElementById('prodName').value = p.name;
     document.getElementById('prodImgUrl').value = p.img;
     document.getElementById('prodKeywords').value = p.keywords || "";
@@ -600,17 +674,12 @@ function editProduct(id) {
     document.getElementById('prodDiscount').value = p.discountCode || "";
     document.getElementById('prodShopee1').value = p.shopee1 || "";
     document.getElementById('prodShopee2').value = p.shopee2 || "";
-
     document.getElementById('productFormContainer').scrollIntoView({ behavior: 'smooth' });
 }
 
 function deleteProduct(id) {
-    if(confirm("ยืนยันที่จะลบสินค้าชิ้นนี้ออกอย่างถาวรใช่ไหม?")) {
-        db.collection("products").doc(id).delete()
-            .then(() => {
-                if(editingProductId === id) resetProductForm();
-            })
-            .catch(err => alert("ลบไม่สำเร็จ: " + err.message));
+    if(confirm("ยืนยันที่จะลบสินค้าชิ้นนี้อย่างถาวร?")) {
+        db.collection("products").doc(id).delete();
     }
 }
 
@@ -618,9 +687,6 @@ function resetProductForm() {
     editingProductId = null;
     document.getElementById('formModeTitle').innerHTML = `<i class="fa-solid fa-box-open mr-2"></i>3. เพิ่มสินค้าใหม่`;
     document.getElementById('cancelEditBtn').classList.add('hidden');
-    document.getElementById('saveProductBtn').innerText = "บันทึกสินค้า";
-    document.getElementById('saveProductBtn').className = "w-full py-2.5 bg-[#D4A373] text-white font-bold rounded-xl shadow-sm hover:bg-[#C39262] transition mt-2 text-sm";
-    
     document.getElementById('prodName').value = "";
     document.getElementById('prodImgUrl').value = "";
     document.getElementById('prodKeywords').value = "";
@@ -631,74 +697,33 @@ function resetProductForm() {
 }
 
 // ==========================================================================
-// [SECTION 8: IN-LINE PRODUCT GRID DRAG SORTING] บันทึกการลากจัดอันดับสินค้าด่วน
+// [SECTION 8: DRAG SORTING] 
 // ==========================================================================
-
 function initGridSortable() {
     const grid = document.getElementById('productGrid');
-    if (!grid) return;
-
+    if (!grid || !isAdminLoggedIn || currentSortRule !== "default") return;
     destroyGridSortable();
-
-    if (isAdminLoggedIn && currentSortRule === "default") {
-        gridSortableInstance = new Sortable(grid, {
-            animation: 180,
-            handle: '.main-grid-handle', 
-            ghostClass: 'opacity-40',    
-            onStart: function() {
-                if (navigator.vibrate) navigator.vibrate(10);
-            }
-        });
-    }
+    gridSortableInstance = new Sortable(grid, { animation: 180, handle: '.main-grid-handle', ghostClass: 'opacity-40' });
 }
 
 function destroyGridSortable() {
-    if (gridSortableInstance) {
-        gridSortableInstance.destroy();
-        gridSortableInstance = null;
-    }
+    if (gridSortableInstance) { gridSortableInstance.destroy(); gridSortableInstance = null; }
 }
 
 function setupProductGridOrderSave() {
     if (!saveOrderBtn) return;
-
     saveOrderBtn.addEventListener('click', () => {
         const grid = document.getElementById('productGrid');
         const cards = grid.querySelectorAll('[data-product-id]');
-        
-        if (cards.length === 0) {
-            alert("⚠️ ไม่พบข้อมูลการจัดเรียงที่จะบันทึกครับ");
-            return;
-        }
+        if (cards.length === 0) return;
 
         const newlySortedIds = Array.from(cards).map(card => card.getAttribute('data-product-id'));
         const batch = db.batch();
 
-        if (currentFilter === "all") {
-            newlySortedIds.forEach((id, index) => {
-                const docRef = db.collection("products").doc(id);
-                batch.update(docRef, { orderIndex: index });
-            });
-        } else {
-            const otherProducts = products.filter(p => p.subCategory !== currentFilter);
-            otherProducts.sort((a,b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+        newlySortedIds.forEach((id, index) => {
+            batch.update(db.collection("products").doc(id), { orderIndex: index });
+        });
 
-            newlySortedIds.forEach((id, index) => {
-                const docRef = db.collection("products").doc(id);
-                batch.update(docRef, { orderIndex: index });
-            });
-
-            otherProducts.forEach((prod, index) => {
-                const docRef = db.collection("products").doc(prod.id);
-                batch.update(docRef, { orderIndex: newlySortedIds.length + index });
-            });
-        }
-
-        batch.commit()
-            .then(() => {
-                const messageScope = currentFilter === "all" ? "สินค้าทั้งหมดของร้าน" : `หมวดหมู่ "${currentFilter}"`;
-                alert(`👑 บันทึกอันดับการจัดวางสินค้าในส่วน ${messageScope} ไปยังระบบคลาวด์เรียบร้อย!`);
-            })
-            .catch(err => alert("บันทึกลำดับไม่สำเร็จ: " + err.message));
+        batch.commit().then(() => alert(`👑 บันทึกตำแหน่งการจัดวางไปยังระบบเรียบร้อย!`));
     });
 }
