@@ -1,8 +1,6 @@
 // ==========================================================================
-// [FIREBASE INITIALIZATION] การตั้งค่าและเชื่อมต่อ Firebase
+// [FIREBASE INITIALIZATION] การตั้งค่าและเชื่อมต่อ Firebase & Firebase Auth
 // ==========================================================================
-// ลิงก์ไลบรารี Firebase SDK หลัก (แนะนำให้เลือกนำเข้าผ่าน CDN หรือใส่ใน index.html ตามความเหมาะสมของระบบ)
-// ในส่วนนี้คือการประกาศ Configuration และบันทึกค่าไว้สำหรับการเรียกใช้งานในแอปพลิเคชัน
 const firebaseConfig = {
   apiKey: "AIzaSyAdXhdFIURRCZX_6ozynr0Ij16KoRAFkts",
   authDomain: "orivexa.firebaseapp.com",
@@ -12,6 +10,10 @@ const firebaseConfig = {
   appId: "1:661750654974:web:2c8b896be65d2d96a6c2af",
   measurementId: "G-H3D0ZBHEFB"
 };
+
+// สั่งเปิดตัวเชื่อมต่อ Firebase
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
 
 // ==========================================================================
 // [SECTION 1: DATA SETUP & STORAGE SYNC] การดึงและซิงค์ฐานข้อมูลหลักผ่าน LocalStorage
@@ -88,6 +90,15 @@ document.addEventListener("DOMContentLoaded", () => {
     setupAdminForms();   
     setupLoginEnterKey(); 
     setupProductGridOrderSave(); // ผูกกลไกจับเหตุการณ์บันทึกจัดเรียงด่วน
+    
+    // ติดตามสถานะล็อกอินจาก Firebase ตลอดเวลา (กรณีเปิดแผ่นหน้าจอใหม่มาจะได้ไม่ต้องล็อกอินซ้ำ)
+    auth.onAuthStateChanged((user) => {
+        if (user) {
+            handleAdminLoginSuccess();
+        } else {
+            handleAdminLogoutSuccess();
+        }
+    });
 });
 
 // ==========================================================================
@@ -310,29 +321,51 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
 adminBtn.addEventListener('click', () => { loginModal.classList.remove('hidden'); usernameInput.focus(); });
 closeLoginBtn.addEventListener('click', () => { loginModal.classList.add('hidden'); loginError.classList.add('hidden'); });
 
+// ฟังก์ชันสำหรับเรียกใช้งานเพื่อตรวจสอบสิทธิ์ล็อกอินผ่าน Firebase Auth แทนแบบเดิม
 function executeLogin() {
-    if(usernameInput.value === "admin" && passwordInput.value === "1234") {
-        isAdminLoggedIn = true;
-        adminPanel.classList.remove('hidden'); 
-        logoutBtn.classList.remove('hidden');   
-        adminBtn.classList.add('hidden');      
-        loginModal.classList.add('hidden');
-        
-        saveOrderBtn.style.display = 'flex';
+    const email = usernameInput.value.trim();
+    const password = passwordInput.value;
 
-        document.getElementById('editHeroUrl').value = siteBanner.url;
-        document.getElementById('editHeroTitle').value = siteBanner.title;
-        document.getElementById('editHeroSub').value = siteBanner.subtitle;
-
-        injectAdminShortcutMenu();
-        renderProducts(); 
-        renderCategories();
-    } else {
-        loginError.classList.remove('hidden'); 
+    if (!email || !password) {
+        loginError.innerText = "กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน";
+        loginError.classList.remove('hidden');
+        return;
     }
+
+    // เรียกฟังก์ชันของ Firebase ยืนยันตัวตนด้วย Email และ Password
+    auth.signInWithEmailAndPassword(email, password)
+        .then(() => {
+            // ล็อกอินสำเร็จ (กลไกหน้าจอจะเปลี่ยนผ่าน onAuthStateChanged ด้านบนอัตโนมัติ)
+            loginModal.classList.add('hidden');
+            loginError.classList.add('hidden');
+        })
+        .catch((error) => {
+            // เกิดข้อผิดพลาด/รหัสไม่ถูก
+            console.error(error);
+            loginError.innerText = "อีเมลหรือรหัสผ่านระบบหลังบ้านไม่ถูกต้อง";
+            loginError.classList.remove('hidden');
+        });
 }
 
 submitLoginBtn.addEventListener('click', executeLogin);
+
+// ตัวจัดแจงเมื่อ Firebase ตรวจพบว่าล็อกอินผ่านสำเร็จ
+function handleAdminLoginSuccess() {
+    isAdminLoggedIn = true;
+    adminPanel.classList.remove('hidden'); 
+    logoutBtn.classList.remove('hidden');   
+    adminBtn.classList.add('hidden');      
+    
+    saveOrderBtn.style.display = 'flex';
+
+    document.getElementById('editHeroUrl').value = siteBanner.url;
+    document.getElementById('editHeroTitle').value = siteBanner.title;
+    document.getElementById('editHeroSub').value = siteBanner.subtitle;
+
+    injectAdminShortcutMenu();
+    renderProducts(); 
+    renderCategories();
+}
 
 function setupLoginEnterKey() {
     const handleEnter = (event) => {
@@ -361,7 +394,16 @@ function injectAdminShortcutMenu() {
     adminPanel.insertBefore(shortcutDiv, adminPanel.firstChild);
 }
 
+// เมื่อกดออกจากระบบ ให้ไปล้างสิทธิ์บนระบบ Firebase
 logoutBtn.addEventListener('click', () => {
+    auth.signOut().then(() => {
+        // ออกจากระบบสำเร็จ
+        handleAdminLogoutSuccess();
+    });
+});
+
+// ตัวจัดแจงรีเซ็ตหน้าจอเมื่อยืนยันการออกจากระบบสำเร็จ
+function handleAdminLogoutSuccess() {
     isAdminLoggedIn = false;
     adminPanel.classList.add('hidden');
     logoutBtn.classList.add('hidden');
@@ -377,7 +419,7 @@ logoutBtn.addEventListener('click', () => {
 
     resetProductForm();
     renderProducts(); 
-});
+}
 
 // ==========================================================================
 // [SECTION 6: ADMIN CONTROL - BANNER & CATEGORIES]

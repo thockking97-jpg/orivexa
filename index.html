@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orivexa | E-Commerce</title>
+    <title>ORIVEXA เครื่องสำอาง & แฟชั่น ครบจบที่เดียว  </title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -13,7 +13,7 @@
 
     <nav class="bg-white shadow-sm sticky top-0 z-40">
         <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
-            <a href="#" class="text-2xl font-bold tracking-wider text-[#D4A373]">ORIVEXA</a>
+            <a href="#" class="text-2xl font-bold tracking-wider text-[#D4A373]">CHIC & GLOW</a>
             <div>
                 <button id="adminBtn" class="text-xs uppercase tracking-widest text-gray-400 hover:text-[#D4A373] transition">
                     <i class="fa-solid fa-user-gear mr-1"></i> ผู้ดูแล
@@ -27,11 +27,11 @@
 
     <div id="loginModal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
-            <h3 class="text-lg font-bold mb-4 text-center text-[#4A4A4A]">เข้าสู่ระบบผู้ดูแล</h3>
+            <h3 class="text-lg font-bold mb-4 text-center text-[#4A4A4A]">เข้าสู่ระบบผู้ดูแล (Firebase Auth)</h3>
             <div class="space-y-3">
-                <input type="text" id="usernameInput" placeholder="Username" class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-1 focus:ring-[#D4A373]">
+                <input type="text" id="usernameInput" placeholder="Email ผู้ดูแล (e.g. admin@orivexa.com)" class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-1 focus:ring-[#D4A373]">
                 <input type="password" id="passwordInput" placeholder="Password" class="w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-1 focus:ring-[#D4A373]">
-                <p id="loginError" class="text-red-500 text-xs hidden">รหัสผ่านไม่ถูกต้อง</p>
+                <p id="loginError" class="text-red-500 text-xs hidden">อีเมลหรือรหัสผ่านไม่ถูกต้อง</p>
                 <div class="flex space-x-2 pt-2">
                     <button id="closeLoginBtn" class="w-1/2 py-2 bg-gray-100 rounded-xl text-sm">ยกเลิก</button>
                     <button id="submitLoginBtn" class="w-1/2 py-2 bg-[#D4A373] text-white rounded-xl text-sm shadow-sm hover:bg-[#C39262]">Login</button>
@@ -43,7 +43,7 @@
     <header id="heroSection" class="relative bg-[#EAE2B7] h-[260px] md:h-[400px] flex items-center justify-center bg-cover bg-center transition-all" style="background-image: url('https://images.unsplash.com/photo-1596462502278-27bfdc403348?q=80&w=1200');">
         <div class="absolute inset-0 bg-black/20"></div>
         <div class="relative text-center text-white px-4">
-            <h1 id="heroTitle" class="text-3xl md:text-5xl font-bold mb-2 drop-shadow-md">Welcome to Orivexa</h1>
+            <h1 id="heroTitle" class="text-3xl md:text-5xl font-bold mb-2 drop-shadow-md">Welcome to Chic & Glow</h1>
             <p id="heroSubtitle" class="text-sm md:text-lg opacity-90 drop-shadow-sm">เครื่องสำอางและแฟชั่นสำหรับผู้หญิงยุคใหม่</p>
         </div>
     </header>
@@ -60,7 +60,7 @@
             <div class="bg-white p-4 rounded-2xl shadow-sm border border-[#F0EAE5]">
                 <h2 class="font-bold text-lg mb-3 text-[#4A4A4A] hidden md:block"><i class="fa-solid fa-bars-staggered mr-2 text-[#D4A373]"></i>หมวดหมู่สินค้า</h2>
                 <div id="categoryMenu" class="flex md:flex-col overflow-x-auto md:overflow-x-visible space-x-2 md:space-x-0 md:space-y-1 pb-2 md:pb-0 scrollbar-none">
-                </div>
+                    </div>
             </div>
         </aside>
 
@@ -88,7 +88,7 @@
             </div>
 
             <div id="productGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4">
-            </div>
+                </div>
         </section>
     </main>
 
@@ -178,9 +178,12 @@
     </section>
 
     <footer class="bg-white border-t mt-20 py-6 text-center text-xs text-gray-400">
-        <p>&copy; 2026 Orivexa Minimal E-Commerce. All rights reserved.</p>
+        <p>&copy; 2026 Chic & Glow Minimal E-Commerce. All rights reserved.</p>
     </footer>
 
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    
     <script src="app.js"></script>
 </body>
 </html>
